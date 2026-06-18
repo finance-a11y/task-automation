@@ -15,6 +15,11 @@ const EnvSchema = z.object({
   UPSTASH_REDIS_REST_URL: z.string().trim().url(),
   UPSTASH_REDIS_REST_TOKEN: nonEmpty,
   TEAM_TIMEZONE: nonEmpty.default("America/Caracas"),
+  // OpenAI structured-outputs parser (Phase 2). API key is required so a
+  // misconfigured production deploy fails fast; the model has a sensible
+  // default (gpt-4o-mini — cheap, good Spanish; gpt-4.1-mini is the fallback).
+  OPENAI_API_KEY: nonEmpty,
+  OPENAI_MODEL: nonEmpty.default("gpt-4o-mini"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
