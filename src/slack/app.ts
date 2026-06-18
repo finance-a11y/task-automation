@@ -75,6 +75,11 @@ export function createSlackApp(env: Env): SlackApp {
 
   const resolveBotUserId = makeBotUserIdResolver();
 
+  // Single Redis client per warm instance — env validation and client
+  // construction run once (lazily, on first event) rather than per message.
+  let redis: ReturnType<typeof createRedis> | undefined;
+  const getRedis = () => (redis ??= createRedis(env));
+
   app.message(async ({ message, body, client }) => {
     const eventId =
       typeof (body as { event_id?: unknown }).event_id === "string"
@@ -83,7 +88,7 @@ export function createSlackApp(env: Env): SlackApp {
     const botUserId = await resolveBotUserId(client as unknown as AuthTestClient);
 
     await processMessageEvent(
-      { redis: createRedis(env), client, env, botUserId },
+      { redis: getRedis(), client, env, botUserId },
       { eventId, message: message as IncomingMessage },
     );
   });
