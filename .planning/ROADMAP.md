@@ -31,7 +31,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Slack's retry of the same event does not produce a second reaction (idempotent on event_id/message_ts)
   4. The bot ignores its own posts and other bots' messages and non-root messages (no echo loop)
   5. State written to Upstash Redis survives a cold start and is readable on the next invocation
-**Plans**: TBD
+**Plans**: 3 plans
+  - [ ] 01-01-PLAN.md — Repo scaffold, locked deps, strict TS config, Vitest, env contract (+ dependency-provenance gate)
+  - [ ] 01-02-PLAN.md — Env validation (zod fail-fast) + Upstash Redis dedup helper (SET NX EX on event_id)
+  - [ ] 01-03-PLAN.md — Slack events ingress slice: signature + ACK<3s/waitUntil + dedup + filter + in-thread receipt (+ live deploy checkpoint)
 
 ### Phase 2: NL Parser + Resolver
 **Goal**: An offline-testable pipeline that takes a raw message string and returns a ClickUp-ready payload — OpenAI (structured outputs, json_schema strict) extracts the structured fields, and a deterministic resolver maps cliente to its dropdown option UUID, assignees to ClickUp member IDs, and relative Spanish dates to epoch milliseconds in the team timezone, leaving anything unmatched as null.
@@ -87,7 +90,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Serverless Foundation | 0/TBD | Not started | - |
+| 1. Serverless Foundation | 0/3 | Not started | - |
 | 2. NL Parser + Resolver | 0/TBD | Not started | - |
 | 3. Confirm + Create (Flow A) | 0/TBD | Not started | - |
 | 4. Reverse Notifications (Flow B) | 0/TBD | Not started | - |
