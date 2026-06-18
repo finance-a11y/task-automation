@@ -1,0 +1,93 @@
+import { DateTime } from "luxon";
+
+/**
+ * Resolve a relative Spanish date phrase to an epoch-millisecond timestamp,
+ * computed entirely in `timezone` (the team TZ, default America/Caracas) — NOT
+ * the server's UTC clock (Pitfall 5). `now` is injected for determinism (the
+ * function never calls Date.now()).
+ *
+ * Time-of-day convention: every resolved date is normalized to **start-of-day
+ * in zone** (00:00 local), matching all-day ClickUp tasks. luxon converts that
+ * in-zone wall time to a true UTC epoch via the zone offset, so the returned ms
+ * is always a correct absolute instant.
+ *
+ * Returns null for anything it can't confidently parse (never guesses).
+ */
+export function resolveSpanishDate(
+  phrase: string | null,
+  now: number,
+  timezone: string,
+): number | null {
+  if (!phrase) return null;
+
+  const today = DateTime.fromMillis(now, { zone: timezone }).startOf("day");
+  const norm = normalize(phrase);
+  if (norm.length === 0) return null;
+
+  // hoy
+  if (norm === "hoy") return today.toMillis();
+
+  // pasado manana (check before "manana")
+  if (norm === "pasado manana") return today.plus({ days: 2 }).toMillis();
+
+  // manana
+  if (norm === "manana") return today.plus({ days: 1 }).toMillis();
+
+  // "en N dias"
+  const inDays = norm.match(/^en\s+(\d+)\s+dias?$/);
+  if (inDays) {
+    const n = Number(inDays[1]);
+    return today.plus({ days: n }).toMillis();
+  }
+
+  // weekday names (strip leading articles el/este/proximo).
+  const weekday = stripArticles(norm);
+  const targetWeekday = WEEKDAYS[weekday];
+  if (targetWeekday !== undefined) {
+    let d = today;
+    // on-or-after today: advance until weekday matches.
+    while (d.weekday !== targetWeekday) {
+      d = d.plus({ days: 1 });
+    }
+    return d.toMillis();
+  }
+
+  // explicit dd/mm or dd/mm/yyyy
+  const explicit = norm.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (explicit) {
+    const day = Number(explicit[1]);
+    const month = Number(explicit[2]);
+    const year = explicit[3] ? Number(explicit[3]) : today.year;
+    const dt = DateTime.fromObject({ year, month, day }, { zone: timezone });
+    if (!dt.isValid) return null;
+    return dt.startOf("day").toMillis();
+  }
+
+  return null;
+}
+
+/** lowercase, trim, collapse spaces, strip accents. */
+function normalize(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip combining accents
+    .replace(/\s+/g, " ");
+}
+
+/** Drop leading articles used before weekday names. */
+function stripArticles(s: string): string {
+  return s.replace(/^(el|la|este|esta|proximo|proxima)\s+/, "");
+}
+
+/** Spanish weekday name → luxon weekday number (1=Mon … 7=Sun). */
+const WEEKDAYS: Record<string, number> = {
+  lunes: 1,
+  martes: 2,
+  miercoles: 3,
+  jueves: 4,
+  viernes: 5,
+  sabado: 6,
+  domingo: 7,
+};
