@@ -7,11 +7,14 @@ import { Redis } from "@upstash/redis";
  * ingress (plan 03).
  */
 export type RedisLike = {
+  // Return type is `unknown` to stay structurally compatible with the
+  // @upstash/redis client; markEventOnce only distinguishes null vs non-null
+  // (NX returns the stored marker / "OK" on a new key, null when it existed).
   set(
     key: string,
     value: unknown,
     opts: { nx: true; ex: number },
-  ): Promise<string | null>;
+  ): Promise<unknown>;
 };
 
 type RedisEnv = {
