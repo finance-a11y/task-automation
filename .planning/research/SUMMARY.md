@@ -1,7 +1,9 @@
 # Project Research Summary
 
 **Project:** Slack ↔ ClickUp NL-to-task automation bot
-**Domain:** Webhook-driven serverless integration bot (Slack + Anthropic LLM + ClickUp) on Vercel
+**Domain:** Webhook-driven serverless integration bot (Slack + OpenAI LLM + ClickUp) on Vercel
+
+> **Decision update (2026-06-18):** AI provider changed from Anthropic/Claude to **OpenAI** to avoid consuming Claude credits. Use OpenAI **structured outputs** (`response_format: { type: "json_schema", strict: true }`, or the `zodResponseFormat` helper from `openai/helpers/zod`) — the direct equivalent of Claude's forced tool use; guarantees schema-shaped JSON. Model: cheap tier `gpt-4o-mini` (or `gpt-4.1-mini`), good Spanish + date/name resolution. Everywhere this summary says "Claude / Anthropic / forced tool use," read "OpenAI / `openai` SDK / structured outputs." Package: `openai` (latest) instead of `@anthropic-ai/sdk`. Zod still used for the schema + runtime guard.
 **Researched:** 2026-06-18
 **Confidence:** HIGH
 
@@ -21,7 +23,7 @@ The keystone is the official Vercel Bolt adapter, which removes the need for any
 
 **Core technologies:**
 - `@slack/bolt@4.7.3` + `@vercel/slack-bolt@1.5.0`: Slack framework + Vercel adapter — official 3-second-ack solution via Fluid Compute `waitUntil`; handles Slack signature verification internally.
-- `@anthropic-ai/sdk@0.105.0` (model `claude-sonnet-4-5`, fallback `claude-haiku-4-5`): NL → structured task via forced single-tool use.
+- `openai` SDK (model `gpt-4o-mini`, fallback `gpt-4.1-mini`): NL → structured task via structured outputs (`json_schema` strict / `zodResponseFormat`). Chosen over Anthropic to avoid Claude credit usage.
 - ClickUp REST API v2 via `fetch` + Node `crypto`: create tasks/custom fields and verify webhook HMAC — no mature Node SDK worth adopting.
 - `@vercel/functions@3.7.1` + `zod@4.4.3`: `waitUntil` primitive for the non-Bolt ClickUp→Slack path; Zod schema doubles as tool input schema and runtime guard.
 - Upstash Redis (via Vercel Marketplace): pending-task store, event dedup, task↔thread map — Vercel KV is sunset.
@@ -32,7 +34,7 @@ The keystone is the official Vercel Bolt adapter, which removes the need for any
 
 **Must have (table stakes):**
 - Single-channel message capture (root human messages only).
-- Claude NL parse → {title, description, cliente, assignees, start/due, links}.
+- OpenAI NL parse → {title, description, cliente, assignees, start/due, links}.
 - Block Kit threaded preview with Confirm / Edit / Cancel — the mandatory human gate.
 - Cliente resolution to dropdown option UUID + assignee resolution (static map + name fuzzy match).
 - Confirm → create task in the Task-Seo Team list with all fields; post task link back to thread.
@@ -53,7 +55,7 @@ A stateless, webhook-driven design: three thin ingress functions each verify sig
 
 **Major components:**
 1. Ingress functions (`/api/slack/events`, `/api/slack/interactions`, `/api/clickup/webhook`) — verify, dedup, ACK fast, delegate.
-2. LLM Parser (Anthropic tool use) — free text → `ParsedTask`; schema is single source of truth.
+2. LLM Parser (OpenAI structured outputs) — free text → `ParsedTask`; schema is single source of truth.
 3. Resolver/Mapper — pure functions mapping client/assignee strings → real ClickUp IDs and normalizing dates to epoch ms; no I/O.
 4. ClickUp + Slack clients — `fetch` wrapper for create/read; Bolt/Web API for thread posts and `chat.update`.
 5. Upstash Redis store — pending task (TTL), event dedup, task↔thread map.
@@ -100,7 +102,7 @@ Flow A (create path) is a shippable slice before Flow B (reverse sync).
 
 ### Research Flags
 - **Needs research:** Phase 5 (ClickUp `X-Signature`/rotation), Phase 3 (button-value 2000-char limit / `chat.update`).
-- **Standard patterns:** Phase 1 (`@vercel/slack-bolt` + Fluid `waitUntil`), Phase 2 (Anthropic forced tool use), Phase 4 (ClickUp Tasks/Custom Fields API).
+- **Standard patterns:** Phase 1 (`@vercel/slack-bolt` + Fluid `waitUntil`), Phase 2 (OpenAI structured outputs), Phase 4 (ClickUp Tasks/Custom Fields API).
 
 ## Confidence Assessment
 
@@ -115,7 +117,7 @@ Flow A (create path) is a shippable slice before Flow B (reverse sync).
 
 ### Gaps to Address
 - ClickUp `X-Signature` exact format — verify against a live webhook-create response before Phase 5.
-- Anthropic `tool_choice` exact syntax — confirm against current SDK at build time.
+- OpenAI structured-outputs exact syntax (`response_format` json_schema strict vs `zodResponseFormat`) + chosen model — confirm against current SDK at build time.
 - Cliente option UUIDs — fetch the 7 name→UUID map once via `GET /list/{id}/field` and verify before hardcoding.
 - Cold-start frequency under Fluid Compute — monitor function durations in Phase 1.
 - task↔thread persistence wiring — ensure written at create time (Phase 4) so Phase 5 can read it.
@@ -127,7 +129,7 @@ Flow A (create path) is a shippable slice before Flow B (reverse sync).
 - npm registry (live `npm view`) — exact pinned versions and peer-dependency constraints.
 - developer.clickup.com — Tasks, Custom Fields, Webhooks, Webhook Signature.
 - api.slack.com / docs.slack.dev — Events API (3s, retry headers), Block Kit limits, interactive messages.
-- anthropic-sdk-typescript helpers + Claude Models overview — forced tool use.
+- openai-node SDK + OpenAI Structured Outputs guide — json_schema strict / zodResponseFormat.
 - Vercel Redis / Marketplace (Vercel KV sunset → Upstash).
 - `.planning/PROJECT.md` — real ClickUp IDs: list `901327239630`, Cliente field `05ebdc8a-4736-404d-9132-3ab32875e1f1` (7 options), 9 members.
 

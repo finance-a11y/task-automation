@@ -13,7 +13,7 @@ This bot turns free-form Spanish Slack messages in one dedicated channel into co
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Serverless Foundation** - Slack ingress that verifies signatures, ACKs <3s, dedups, and parks state in Redis
-- [ ] **Phase 2: NL Parser + Resolver** - Claude turns free text into a ClickUp-ready payload with real client/member IDs and epoch-ms dates
+- [ ] **Phase 2: NL Parser + Resolver** - OpenAI turns free text into a ClickUp-ready payload with real client/member IDs and epoch-ms dates
 - [ ] **Phase 3: Confirm + Create (Flow A complete)** - Threaded preview with Confirm/Edit/Cancel that creates the task and posts its link back
 - [ ] **Phase 4: Reverse Notifications (Flow B)** - ClickUp webhook posts status/assignee changes back to the originating thread
 - [ ] **Phase 5: Hardening** - Error reporting in-thread, rate-limit/redelivery handling, and a per-channel kill switch
@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: TBD
 
 ### Phase 2: NL Parser + Resolver
-**Goal**: An offline-testable pipeline that takes a raw message string and returns a ClickUp-ready payload — Claude (forced tool use) extracts the structured fields, and a deterministic resolver maps cliente to its dropdown option UUID, assignees to ClickUp member IDs, and relative Spanish dates to epoch milliseconds in the team timezone, leaving anything unmatched as null.
+**Goal**: An offline-testable pipeline that takes a raw message string and returns a ClickUp-ready payload — OpenAI (structured outputs, json_schema strict) extracts the structured fields, and a deterministic resolver maps cliente to its dropdown option UUID, assignees to ClickUp member IDs, and relative Spanish dates to epoch milliseconds in the team timezone, leaving anything unmatched as null.
 **Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: PARSE-01, PARSE-02, PARSE-03, PARSE-04

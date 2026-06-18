@@ -16,7 +16,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Parsing (IA)
 
-- [ ] **PARSE-01**: El bot extrae con Claude (forced tool use) un objeto estructurado: título, descripción, cliente, asignados, start date, due date, links
+- [ ] **PARSE-01**: El bot extrae con OpenAI (structured outputs, json_schema strict) un objeto estructurado: título, descripción, cliente, asignados, start date, due date, links
 - [ ] **PARSE-02**: El bot resuelve el "cliente" a una de las 7 opciones del dropdown ClickUp por su option UUID (valida contra la lista; sin match → null)
 - [ ] **PARSE-03**: El bot resuelve asignados a member IDs de ClickUp vía mapa fijo Slack→ClickUp + resolución de nombres del texto (sin match → null)
 - [ ] **PARSE-04**: El bot resuelve fechas relativas en español ("viernes", "mañana") a epoch en milisegundos en la zona horaria del equipo

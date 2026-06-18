@@ -54,7 +54,7 @@ None yet.
 
 Carried from research (verify before the relevant phase):
 - Phase 4: ClickUp X-Signature exact format — verify against a live webhook-create response
-- Phase 2: Anthropic tool_choice exact syntax — confirm against current SDK at build time
+- Phase 2: OpenAI structured outputs (response_format json_schema strict, or zodResponseFormat helper) — confirm exact SDK syntax + chosen model (gpt-4o-mini/gpt-4.1-mini) at build time
 - Phase 2: Cliente option UUIDs — fetch the 7 name→UUID map once via GET /list/{id}/field before hardcoding
 - REQUIREMENTS.md states "21" v1 requirements but the listed items total 23 — all 23 are mapped
 

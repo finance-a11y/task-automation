@@ -4,6 +4,13 @@
 **Researched:** 2026-06-18
 **Confidence:** HIGH (versions verified against npm registry + official docs)
 
+> **⚠ Decision override (2026-06-18):** The AI provider was switched from **Anthropic/Claude to OpenAI** to avoid consuming Claude credits. Wherever this document recommends `@anthropic-ai/sdk`, `claude-sonnet-4-5`/`claude-haiku-4-5`, or "forced tool use," substitute:
+> - Package: **`openai`** (latest) instead of `@anthropic-ai/sdk`
+> - Model: **`gpt-4o-mini`** (default, cheap) / `gpt-4.1-mini` (fallback)
+> - Mechanism: **Structured Outputs** — `response_format: { type: "json_schema", json_schema: { strict: true, schema } }`, or the `zodResponseFormat(schema, "create_task")` helper from `openai/helpers/zod`. This guarantees schema-shaped JSON, the direct equivalent of Claude forced tool use.
+> - `zod` stays (schema source of truth + runtime guard). Everything else in this stack (Slack Bolt + `@vercel/slack-bolt` + Fluid `waitUntil`, ClickUp REST, Upstash Redis) is unchanged.
+> - Verify exact OpenAI SDK syntax + model availability against the official Structured Outputs guide at build time (Phase 2).
+
 ## Executive Recommendation
 
 Use **Slack Bolt for JS (v4) deployed through the official `@vercel/slack-bolt` adapter**. This is the single most important decision: the adapter exists specifically to solve Slack's 3-second ack requirement on serverless by leveraging Vercel **Fluid Compute** + `waitUntil`. It acknowledges Slack within the deadline and keeps your handler running in the background — no external queue, no AWS SQS, no second service to maintain. This is the 2025/2026 standard path and directly matches the project's "Vercel serverless, no server to maintain" constraint.

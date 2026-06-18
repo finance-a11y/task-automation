@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Un bot/automatización que escucha mensajes de lenguaje libre en un canal dedicado de Slack, los interpreta con IA (Claude) y crea tareas en ClickUp con cliente, descripción, asignados, start date, due date y links correctamente mapeados. Antes de crear, el bot postea un preview en el hilo del mensaje para que un humano confirme. También notifica de vuelta al canal cuando cambia el estatus o asignado de una tarea (bidireccional). Es para el equipo interno de Arianna Lupi (Arianna, Verónica, Juan + equipo) para centralizar tareas dispersas entre chats.
+Un bot/automatización que escucha mensajes de lenguaje libre en un canal dedicado de Slack, los interpreta con IA (OpenAI) y crea tareas en ClickUp con cliente, descripción, asignados, start date, due date y links correctamente mapeados. Antes de crear, el bot postea un preview en el hilo del mensaje para que un humano confirme. También notifica de vuelta al canal cuando cambia el estatus o asignado de una tarea (bidireccional). Es para el equipo interno de Arianna Lupi (Arianna, Verónica, Juan + equipo) para centralizar tareas dispersas entre chats.
 
 ## Core Value
 
@@ -47,9 +47,9 @@ Convertir un mensaje libre en Slack en una tarea de ClickUp correcta y completa 
 
 ## Constraints
 
-- **Tech stack**: Node/TypeScript — Slack Bolt SDK + ClickUp API + Anthropic SDK. Mejor encaje para bot Slack serverless.
+- **Tech stack**: Node/TypeScript — Slack Bolt SDK + ClickUp API + OpenAI SDK. Mejor encaje para bot Slack serverless.
 - **Hosting**: Vercel serverless (functions). Equipo ya tiene acceso Vercel; sin servidor que mantener. (Hostinger se planteó en llamada pero se prefirió serverless.)
-- **AI provider**: Claude (Anthropic) para el parseo NL→estructura.
+- **AI provider**: OpenAI para el parseo NL→estructura (structured outputs, json_schema strict). Elegido sobre Claude para no consumir créditos Claude; modelo barato tipo gpt-4o-mini/gpt-4.1-mini.
 - **Timeline**: objetivo listo en julio 2026; las tareas del roadmap no deben pasar de junio según prioridad de la reunión. Integración base apuntada para "esta semana".
 - **Confirmación humana**: obligatoria antes de crear tarea (preview en hilo) — evita tareas basura por mal parseo.
 
@@ -61,6 +61,7 @@ Convertir un mensaje libre en Slack en una tarea de ClickUp correcta y completa 
 | Confirmación preview en hilo | Evitar tareas mal parseadas; humano valida cliente/asignado/fecha | — Pending |
 | Hosting Vercel serverless | Sin servidor que mantener; acceso ya disponible; webhooks fáciles | — Pending |
 | Node/TypeScript + Slack Bolt | Ecosistema maduro para bots Slack en serverless | — Pending |
+| AI provider OpenAI (no Claude) | Evita consumir créditos Claude; structured outputs json_schema strict equivalen al forced tool-use; gpt-4o-mini barato | — Pending |
 | Cliente = custom field dropdown | ClickUp real ya usa dropdown Cliente en list Task-Seo Team | — Pending |
 | Asignados: mapa fijo + nombres del texto | Robustez para el equipo + flexibilidad para menciones sueltas | — Pending |
 
