@@ -1,8 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { markEventOnce, createRedis, type RedisLike } from "./redis.js";
+import { markEventOnce, clearEvent, createRedis, type RedisLike } from "./redis.js";
 
-function fakeRedis(setImpl: RedisLike["set"]): RedisLike {
-  return { set: setImpl };
+function fakeRedis(
+  setImpl: RedisLike["set"],
+  delImpl: RedisLike["del"] = vi.fn().mockResolvedValue(1),
+): RedisLike {
+  return { set: setImpl, del: delImpl };
 }
 
 describe("markEventOnce", () => {
@@ -37,6 +40,34 @@ describe("markEventOnce", () => {
     });
     expect(await markEventOnce(redis, "dup")).toBe(true);
     expect(await markEventOnce(redis, "dup")).toBe(false);
+  });
+});
+
+describe("clearEvent", () => {
+  it("DELs the namespaced dedup key for the eventId", async () => {
+    const del = vi.fn().mockResolvedValue(1);
+    await clearEvent(fakeRedis(vi.fn(), del), "abc");
+    expect(del).toHaveBeenCalledWith("evt:abc");
+  });
+
+  it("re-arms markEventOnce: clear then mark returns true again", async () => {
+    const store = new Set<string>();
+    const redis = fakeRedis(
+      async (key) => {
+        if (store.has(key)) return null;
+        store.add(key);
+        return "OK";
+      },
+      async (...keys: string[]) => {
+        let removed = 0;
+        for (const key of keys) if (store.delete(key)) removed += 1;
+        return removed;
+      },
+    );
+    expect(await markEventOnce(redis, "dup")).toBe(true);
+    expect(await markEventOnce(redis, "dup")).toBe(false);
+    await clearEvent(redis, "dup");
+    expect(await markEventOnce(redis, "dup")).toBe(true);
   });
 });
 

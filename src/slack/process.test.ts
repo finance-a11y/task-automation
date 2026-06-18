@@ -9,13 +9,23 @@ import type { RedisLike } from "../store/redis.js";
 
 const TASK_CHANNEL = "C_TASK";
 
-function nxRedis(): RedisLike {
+function nxRedis(): RedisLike & {
+  set: ReturnType<typeof vi.fn>;
+  del: ReturnType<typeof vi.fn>;
+} {
   const seen = new Set<string>();
   return {
     set: vi.fn(async (key: string) => {
       if (seen.has(key)) return null;
       seen.add(key);
       return "OK";
+    }),
+    del: vi.fn(async (...keys: string[]) => {
+      let removed = 0;
+      for (const key of keys) {
+        if (seen.delete(key)) removed += 1;
+      }
+      return removed;
     }),
   };
 }
@@ -91,5 +101,35 @@ describe("processMessageEvent", () => {
     await expect(
       processMessageEvent(d, { eventId: "E4", message: goodMessage }),
     ).resolves.toBeUndefined();
+  });
+
+  it("clears the dedup key on a transient postMessage failure so a redelivery re-posts", async () => {
+    const redis = nxRedis();
+    const client = fakeClient();
+    // First attempt fails transiently; the redelivery succeeds.
+    client.chat.postMessage.mockRejectedValueOnce(new Error("slack 429"));
+    const d = deps({ redis, client });
+
+    await processMessageEvent(d, { eventId: "Eretry", message: goodMessage });
+    // The dedup key must have been released after the failed receipt.
+    expect(redis.del).toHaveBeenCalledWith("evt:Eretry");
+    expect(client.chat.postMessage).toHaveBeenCalledTimes(1);
+
+    // Slack redelivers the same event_id — it must be re-attempted and posted.
+    await processMessageEvent(d, { eventId: "Eretry", message: goodMessage });
+    expect(client.chat.postMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT clear the dedup key for a true duplicate on the success path", async () => {
+    const redis = nxRedis();
+    const client = fakeClient();
+    const d = deps({ redis, client });
+
+    await processMessageEvent(d, { eventId: "Eok", message: goodMessage });
+    await processMessageEvent(d, { eventId: "Eok", message: goodMessage });
+
+    // Receipt posted exactly once, and the key was never released.
+    expect(client.chat.postMessage).toHaveBeenCalledTimes(1);
+    expect(redis.del).not.toHaveBeenCalled();
   });
 });

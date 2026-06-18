@@ -15,6 +15,9 @@ export type RedisLike = {
     value: unknown,
     opts: { nx: true; ex: number },
   ): Promise<unknown>;
+  // DEL the dedup key so a downstream failure can be re-attempted on a Slack
+  // redelivery (clearEvent). Variadic in @upstash/redis; we only ever pass one.
+  del(...keys: string[]): Promise<unknown>;
 };
 
 type RedisEnv = {
@@ -65,4 +68,17 @@ export async function markEventOnce(
     ex: ttlSeconds,
   });
   return result !== null;
+}
+
+/**
+ * Release the idempotency guard for an eventId (DEL evt:<id>). Called when a
+ * downstream side-effect failed *after* markEventOnce claimed the event, so the
+ * next Slack redelivery of the same event_id is allowed to re-attempt instead of
+ * being silently suppressed (Pitfall 1 — drop-on-transient-failure).
+ */
+export async function clearEvent(
+  redis: RedisLike,
+  eventId: string,
+): Promise<void> {
+  await redis.del(`evt:${eventId}`);
 }

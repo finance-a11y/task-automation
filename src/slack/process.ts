@@ -1,5 +1,5 @@
 import { isProcessableMessage, type IncomingMessage } from "./filter.js";
-import { markEventOnce, type RedisLike } from "../store/redis.js";
+import { markEventOnce, clearEvent, type RedisLike } from "../store/redis.js";
 import type { Env } from "../config/env.js";
 
 /** The Phase 1 in-thread receipt — an intentional placeholder later phases replace. */
@@ -38,16 +38,23 @@ export type ProcessEvent = {
  *
  * Never throws into the ack path: all work is wrapped so a downstream failure is
  * logged (without secrets) but the function still resolves.
+ *
+ * Crucially, if a downstream step fails *after* the event was marked (e.g. the
+ * receipt postMessage throws on a transient 5xx/rate-limit), the dedup key is
+ * released so Slack's redelivery of the same event_id can re-attempt instead of
+ * being permanently suppressed (Pitfall 1).
  */
 export async function processMessageEvent(
   deps: ProcessDeps,
   event: ProcessEvent,
 ): Promise<void> {
+  let marked = false;
   try {
     if (!event.eventId) return;
 
     const first = await markEventOnce(deps.redis, event.eventId);
     if (!first) return; // duplicate / Slack retry — already handled
+    marked = true;
 
     const { message } = event;
     if (
@@ -72,5 +79,17 @@ export async function processMessageEvent(
       "[slack] processMessageEvent failed:",
       err instanceof Error ? err.message : String(err),
     );
+    // A downstream side-effect failed after we claimed the event — release the
+    // dedup key so a Slack redelivery retries rather than being dropped.
+    if (marked) {
+      try {
+        await clearEvent(deps.redis, event.eventId);
+      } catch (clearErr) {
+        console.error(
+          "[slack] failed to clear dedup key after downstream failure:",
+          clearErr instanceof Error ? clearErr.message : String(clearErr),
+        );
+      }
+    }
   }
 }
