@@ -28,7 +28,14 @@ function makeBotUserIdResolver(): (
     if (!cached) {
       cached = client.auth
         .test()
-        .then((res) => res.user_id ?? undefined)
+        .then((res) => {
+          const userId = res.user_id ?? undefined;
+          // A successful auth.test that returns no user_id is not a usable
+          // result — don't cache it, so a later event can re-resolve instead of
+          // being stuck with `undefined` forever.
+          if (userId === undefined) cached = undefined;
+          return userId;
+        })
         .catch((err) => {
           console.error(
             "[slack] auth.test failed while resolving bot user id:",
