@@ -58,18 +58,26 @@ function resolveOne(
   if (trimmed.length === 0) return null;
 
   // 1) Slack user-id override (exact, case-sensitive — Slack ids are opaque).
+  // Guard with Object.hasOwn so inherited Object.prototype keys (e.g.
+  // "constructor", "toString", "hasOwnProperty") can never resolve to a
+  // prototype member and invent an id (Pitfall 4 / prototype pollution).
   const slackHit = slackToMember[trimmed];
-  if (slackHit !== undefined) return slackHit;
+  if (Object.hasOwn(slackToMember, trimmed) && slackHit !== undefined) {
+    return slackHit;
+  }
 
   const norm = trimmed.toLowerCase();
 
-  // 2) Canonical member name (case-insensitive).
+  // 2) Canonical member name (case-insensitive). Object.keys yields only own
+  // enumerable keys, so this loop is already prototype-safe.
   for (const name of Object.keys(MEMBERS) as MemberName[]) {
     if (name.toLowerCase() === norm) return MEMBERS[name];
   }
 
-  // 3) Alias table.
-  const aliased = (MEMBER_ALIASES as Record<string, MemberName>)[norm];
+  // 3) Alias table — own-key guarded for the same reason as the Slack map.
+  const aliased = Object.hasOwn(MEMBER_ALIASES, norm)
+    ? (MEMBER_ALIASES as Record<string, MemberName>)[norm]
+    : undefined;
   if (aliased) return MEMBERS[aliased];
 
   return null;

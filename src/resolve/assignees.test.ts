@@ -45,4 +45,23 @@ describe("resolveAssignees (PARSE-03)", () => {
   it("returns empty results for an empty input list", () => {
     expect(resolveAssignees([])).toEqual({ ids: [], unresolved: [] });
   });
+
+  it("never resolves Object.prototype keys (prototype-pollution guard)", () => {
+    // "constructor"/"toString"/etc. are inherited prototype members, NOT real
+    // members — they must invent NO ids and surface as unresolved (Pitfall 4).
+    const tokens = ["constructor", "toString", "valueOf", "hasOwnProperty"];
+    const result = resolveAssignees(tokens);
+    expect(result.ids).toEqual([]);
+    expect(result.unresolved).toEqual(tokens);
+  });
+
+  it("does not let a prototype key in the Slack override map invent an id", () => {
+    // A user-supplied token that collides with an Object.prototype key must
+    // not resolve via the injected slackToMember map either.
+    const slackToMember = { U123ABC: MIGUEL };
+    expect(resolveAssignees(["constructor"], { slackToMember })).toEqual({
+      ids: [],
+      unresolved: ["constructor"],
+    });
+  });
 });
