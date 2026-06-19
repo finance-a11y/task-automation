@@ -8,6 +8,8 @@ import { createSlackApp } from "../../src/slack/app.js";
 const { app, receiver } = createSlackApp(loadEnv());
 const handler = createHandler(app, receiver);
 
+// IMPORTANT: only a named-method export (Web signature `(Request) => Response`).
+// Do NOT add `export default` — Vercel would then invoke this in Node `(req,res)`
+// mode, ignore the returned Response, and the function would hang (Slack sees
+// "URL didn't respond with the challenge").
 export const POST = (req: Request): Promise<Response> => handler(req);
-
-export default handler;

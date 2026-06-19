@@ -85,4 +85,6 @@ export const POST = async (req: Request): Promise<Response> => {
   return new Response("ok", { status: 200 });
 };
 
-export default POST;
+// Named-method export only (Web signature). No `export default` — a default
+// export makes Vercel invoke this in Node `(req,res)` mode and the returned
+// Response is ignored (function hangs).

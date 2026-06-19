@@ -10,6 +10,6 @@ import { createSlackApp } from "../../src/slack/app.js";
 const { app, receiver } = createSlackApp(loadEnv());
 const handler = createHandler(app, receiver);
 
+// Named-method export only (Web signature). No `export default` — see events.ts:
+// a default export makes Vercel use Node `(req,res)` mode and the function hangs.
 export const POST = (req: Request): Promise<Response> => handler(req);
-
-export default handler;
