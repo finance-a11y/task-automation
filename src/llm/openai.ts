@@ -1,0 +1,46 @@
+import OpenAI from "openai";
+
+/**
+ * Minimal structural type capturing only the OpenAI method `parseTask` calls —
+ * `chat.completions.parse` (the structured-outputs helper). Depending on this
+ * narrow shape (rather than the full `OpenAI` client) lets tests inject a tiny
+ * mock and run completely offline, mirroring the RedisLike/SlackClientLike DI
+ * pattern from Phase 1.
+ */
+export type ParsedChoice = {
+  message: {
+    parsed: unknown | null;
+    refusal?: string | null;
+  };
+};
+
+export type OpenAILike = {
+  chat: {
+    completions: {
+      parse(body: {
+        model: string;
+        messages: Array<{ role: string; content: string }>;
+        response_format: unknown;
+      }): Promise<{ choices: ParsedChoice[] }>;
+    };
+  };
+};
+
+type OpenAIEnv = {
+  OPENAI_API_KEY: string;
+};
+
+/**
+ * Build a real OpenAI client. Lazy by design — never constructed at module load
+ * (mirrors createRedis). Throws a clear error naming OPENAI_API_KEY if it is
+ * absent/empty so a misconfigured deploy fails loudly. The key is read only from
+ * the injected env, never logged.
+ */
+export function createOpenAIClient(
+  env: OpenAIEnv = { OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "" },
+): OpenAI {
+  if (!env.OPENAI_API_KEY) {
+    throw new Error("Cannot create OpenAI client — missing: OPENAI_API_KEY");
+  }
+  return new OpenAI({ apiKey: env.OPENAI_API_KEY });
+}
