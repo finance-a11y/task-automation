@@ -8,6 +8,8 @@ export type ParseAndResolveDeps = {
   model: string;
   timezone?: string;
   slackToMember?: Record<string, number>;
+  /** Optional system-prompt override forwarded to parseTask (injectable seam). */
+  systemPrompt?: string;
 };
 
 /**
@@ -26,6 +28,7 @@ export async function parseAndResolve(
   const parsed = await parseTask(text, {
     client: deps.client,
     model: deps.model,
+    systemPrompt: deps.systemPrompt,
   });
   return resolveTask(parsed, now, {
     timezone: deps.timezone,
