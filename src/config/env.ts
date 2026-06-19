@@ -25,6 +25,13 @@ const EnvSchema = z.object({
   // defaults to the Task-Seo Team list (901327239630) but can be overridden.
   CLICKUP_API_TOKEN: nonEmpty,
   CLICKUP_LIST_ID: nonEmpty.default("901327239630"),
+  // ClickUp reverse-webhook (Phase 4 Flow B — inbound notifications). The signing
+  // secret is returned when the webhook is registered (POST /team/{id}/webhook)
+  // and is required so a misconfigured deploy fails fast — the X-Signature gate
+  // cannot be verified without it. CLICKUP_TEAM_ID is used by the one-time
+  // registration helper and defaults to the Task-Seo workspace (90131720021).
+  CLICKUP_WEBHOOK_SECRET: nonEmpty,
+  CLICKUP_TEAM_ID: nonEmpty.default("90131720021"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
