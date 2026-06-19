@@ -103,7 +103,7 @@ describe("processMessageEvent", () => {
 
     const post = (d.client as ReturnType<typeof fakeClient>).chat.postMessage;
     expect(post).toHaveBeenCalledTimes(1);
-    const arg = post.mock.calls[0][0];
+    const arg = post.mock.calls[0]![0];
     expect(arg.channel).toBe(TASK_CHANNEL);
     expect(arg.thread_ts).toBe(goodMessage.ts);
     expect(Array.isArray(arg.blocks)).toBe(true);
