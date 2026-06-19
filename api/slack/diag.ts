@@ -1,6 +1,7 @@
 import { WebClient } from "@slack/web-api";
 import crypto from "node:crypto";
 import { loadEnv } from "../../src/config/env.js";
+import { createRedis } from "../../src/store/redis.js";
 
 /**
  * Diagnostic + self-join endpoint (internal ops, NOT part of the bot flow).
@@ -45,6 +46,24 @@ export const GET = async (req: Request): Promise<Response> => {
   const report: Record<string, unknown> = {
     expectedTaskChannel: env.SLACK_TASK_CHANNEL_ID,
   };
+
+  // Redis (Upstash) connectivity probe — the #1 runtime failure ("fetch failed"
+  // means the REST URL is wrong, e.g. a rediss:// URL instead of the https one).
+  try {
+    const u = new URL(env.UPSTASH_REDIS_REST_URL);
+    report.redisUrlScheme = u.protocol; // must be "https:"
+    report.redisUrlHost = u.host; // e.g. xxxx.upstash.io (no token shown)
+  } catch {
+    report.redisUrlScheme = "INVALID URL — check UPSTASH_REDIS_REST_URL";
+  }
+  try {
+    const redis = createRedis(env);
+    await redis.set("diag:ping", "1", { ex: 30 });
+    const v = await redis.get("diag:ping");
+    report.redisOk = v === "1" || v === 1;
+  } catch (e) {
+    report.redisError = e instanceof Error ? e.message : String(e);
+  }
 
   try {
     const auth = await web.auth.test();
