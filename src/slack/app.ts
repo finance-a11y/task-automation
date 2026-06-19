@@ -7,6 +7,8 @@ import { processMessageEvent } from "./process.js";
 import {
   handleConfirm,
   handleCancel,
+  handleEditOpen,
+  handleEditSubmit,
   type InteractionDeps,
   type SlackInteractionClient,
 } from "./interactions.js";
@@ -155,6 +157,18 @@ export function createSlackApp(env: Env): SlackApp {
   app.action("cancel_task", async ({ ack, body, action, client }) => {
     await ack();
     await handleCancel(interactionDeps(client), refFrom(body, action));
+  });
+
+  app.action("edit_task", async ({ ack, body, action, client }) => {
+    await ack(); // ack first, then open the modal while trigger_id is valid (<3s)
+    const ref = refFrom(body, action);
+    const triggerId = String((body as { trigger_id?: string }).trigger_id ?? "");
+    await handleEditOpen(interactionDeps(client), { ...ref, triggerId });
+  });
+
+  app.view("edit_modal_submit", async ({ ack, body, client }) => {
+    await ack();
+    await handleEditSubmit(interactionDeps(client), body.view);
   });
 
   const handler = createHandler(app, receiver);
