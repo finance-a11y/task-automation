@@ -4,12 +4,14 @@ import {
   type ClickUpTaskResult,
   type CreateTaskParams,
   type FetchLike,
+  type GetTaskResult,
 } from "./types.js";
 
 const BASE_URL = "https://api.clickup.com/api/v2";
 
 export type ClickUpClient = {
   createTask(params: CreateTaskParams): Promise<ClickUpTaskResult>;
+  getTask(taskId: string): Promise<GetTaskResult>;
 };
 
 type CreateTaskBody = {
@@ -91,6 +93,47 @@ export function createClickUpClient(deps: {
         throw new Error("ClickUp createTask: response missing id/url");
       }
       return { id: json.id, url: json.url };
+    },
+
+    async getTask(taskId: string): Promise<GetTaskResult> {
+      const res = await fetch(`${BASE_URL}/task/${taskId}`, {
+        method: "GET",
+        headers: { Authorization: token },
+      });
+
+      if (!res.ok) {
+        // Surface status + body for diagnosis; the token is never included.
+        const text = await res.text().catch(() => "");
+        throw new Error(
+          `ClickUp getTask failed — status ${res.status}: ${text}`,
+        );
+      }
+
+      const json = (await res.json()) as {
+        id?: unknown;
+        name?: unknown;
+        status?: unknown;
+      };
+      if (typeof json.name !== "string") {
+        throw new Error("ClickUp getTask: response missing a string name");
+      }
+      // ClickUp returns status as an object ({ status: "in progress", ... }); we
+      // surface only the label string when present, tolerating either shape.
+      let status: string | undefined;
+      if (typeof json.status === "string") {
+        status = json.status;
+      } else if (
+        json.status != null &&
+        typeof json.status === "object" &&
+        typeof (json.status as { status?: unknown }).status === "string"
+      ) {
+        status = (json.status as { status: string }).status;
+      }
+      return {
+        id: typeof json.id === "string" ? json.id : taskId,
+        name: json.name,
+        ...(status != null ? { status } : {}),
+      };
     },
   };
 }
