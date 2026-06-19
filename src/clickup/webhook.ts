@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   getThreadForTask,
   markWebhookDeliveryOnce,
@@ -179,6 +180,34 @@ function extractAssigneeTransition(
   return { added, removed };
 }
 
+/**
+ * Build the redelivery dedup key. The reliable path keys on the first
+ * history-item id. When no id is present, ClickUp does not give us a stable
+ * delivery identifier, so we hash the event content (event + task_id +
+ * field/before/after of every item) — this keeps true redeliveries collapsed
+ * while letting genuinely different events on the same task through. Otherwise
+ * the old literal "noitem" fallback collapsed DISTINCT events to one key and
+ * dropped them for the 24h TTL (WR-02).
+ */
+function buildDeliveryKey(
+  event: string,
+  taskId: string,
+  items: ClickUpHistoryItem[],
+): string {
+  const firstId = items[0]?.id;
+  if (typeof firstId === "string" && firstId.length > 0) {
+    return `${event}:${taskId}:${firstId}`;
+  }
+  const content = JSON.stringify(
+    items.map((it) => ({ field: it.field, before: it.before, after: it.after })),
+  );
+  const digest = createHash("sha256")
+    .update(`${event} ${taskId} ${content}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `${event}:${taskId}:c:${digest}`;
+}
+
 /** Pull a task name straight off the payload when ClickUp includes one. */
 function payloadTaskName(payload: ClickUpWebhookPayload): string | null {
   const p = payload as Record<string, unknown>;
@@ -240,8 +269,9 @@ async function runWebhook(
   const ref = await getThreadForTask(redis, taskId);
   if (!ref) return;
 
-  // 4. Redelivery dedup on (event + task_id + first history-item id).
-  const deliveryKey = `${payload.event}:${taskId}:${items[0]?.id ?? "noitem"}`;
+  // 4. Redelivery dedup on (event + task_id + first history-item id), with a
+  //    content-hash fallback when no item id is present (WR-02).
+  const deliveryKey = buildDeliveryKey(payload.event, taskId, items);
   const first = await markWebhookDeliveryOnce(redis, deliveryKey);
   if (!first) return;
 

@@ -315,6 +315,40 @@ describe("processClickUpWebhook — scoping, dedup, fallbacks", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it("posts BOTH distinct status changes on the same task without item ids (WR-02)", async () => {
+    const redis = memRedis();
+    await seedThread(redis);
+    const { slack, post } = spyPoster();
+    const deps: ClickUpWebhookDeps = { redis, slack, getTaskName: async () => "T" };
+    // Two genuinely different transitions, neither carrying a history-item id.
+    await processClickUpWebhook(deps, {
+      event: "taskStatusUpdated",
+      task_id: TASK,
+      history_items: [{ field: "status", before: "abierto", after: "en progreso" }],
+    });
+    await processClickUpWebhook(deps, {
+      event: "taskStatusUpdated",
+      task_id: TASK,
+      history_items: [{ field: "status", before: "en progreso", after: "hecho" }],
+    });
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it("still collapses a true redelivery without item ids (WR-02)", async () => {
+    const redis = memRedis();
+    await seedThread(redis);
+    const { slack, post } = spyPoster();
+    const deps: ClickUpWebhookDeps = { redis, slack, getTaskName: async () => "T" };
+    const payload = {
+      event: "taskStatusUpdated",
+      task_id: TASK,
+      history_items: [{ field: "status", before: "abierto", after: "hecho" }],
+    };
+    await processClickUpWebhook(deps, payload);
+    await processClickUpWebhook(deps, payload);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
   it("does not throw when the Slack post itself fails", async () => {
     const redis = memRedis();
     await seedThread(redis);
