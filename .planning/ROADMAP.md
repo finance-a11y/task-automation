@@ -13,7 +13,7 @@ This bot turns free-form Spanish Slack messages in one dedicated channel into co
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Serverless Foundation** - Slack ingress that verifies signatures, ACKs <3s, dedups, and parks state in Redis *(offline-verified; live deploy pending)*
-- [ ] **Phase 2: NL Parser + Resolver** - OpenAI turns free text into a ClickUp-ready payload with real client/member IDs and epoch-ms dates
+- [x] **Phase 2: NL Parser + Resolver** - OpenAI turns free text into a ClickUp-ready payload with real client/member IDs and epoch-ms dates
 - [ ] **Phase 3: Confirm + Create (Flow A complete)** - Threaded preview with Confirm/Edit/Cancel that creates the task and posts its link back
 - [ ] **Phase 4: Reverse Notifications (Flow B)** - ClickUp webhook posts status/assignee changes back to the originating thread
 - [ ] **Phase 5: Hardening** - Error reporting in-thread, rate-limit/redelivery handling, and a per-channel kill switch
@@ -46,7 +46,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The cliente string resolves to one of the 7 real dropdown option UUIDs, or null when there is no valid match
   3. Assignee names (from the Slack→ClickUp map or loose text mentions) resolve to real member IDs, or null when unmatched
   4. Relative Spanish dates like "viernes" or "mañana" resolve to correct epoch-millisecond timestamps in the team timezone
-**Plans**: TBD
+**Plans**: 3 plans
+  - [x] 02-01-PLAN.md — Env schema (OPENAI_API_KEY/MODEL) + openai/luxon deps + config-as-code maps (clients.ts, members.ts with aliases)
+  - [x] 02-02-PLAN.md — Deterministic resolver (pure, fully unit-tested): cliente→UUID, assignees→member ids, Spanish dates→epoch ms in team TZ
+  - [x] 02-03-PLAN.md — OpenAI structured-outputs parser (injectable client, offline tests) + parseAndResolve glue + gated live smoke test
 
 ### Phase 3: Confirm + Create (Flow A complete)
 **Goal**: The complete, shippable Slack → ClickUp slice: the bot posts a Block Kit preview of the resolved values in the thread, a human Confirms/Edits/Cancels, and on confirm the task is created in the Task-Seo Team list with all fields set and its link posted back — validating Core Value end to end.
@@ -91,7 +94,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Serverless Foundation | 3/3 | Complete (offline; live deploy pending) | 2026-06-18 |
-| 2. NL Parser + Resolver | 0/TBD | Not started | - |
+| 2. NL Parser + Resolver | 0/3 | Not started | - |
 | 3. Confirm + Create (Flow A) | 0/TBD | Not started | - |
 | 4. Reverse Notifications (Flow B) | 0/TBD | Not started | - |
 | 5. Hardening | 0/TBD | Not started | - |
