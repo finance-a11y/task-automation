@@ -32,13 +32,13 @@ type OpenAIEnv = {
 
 /**
  * Build a real OpenAI client. Lazy by design — never constructed at module load
- * (mirrors createRedis). Throws a clear error naming OPENAI_API_KEY if it is
- * absent/empty so a misconfigured deploy fails loudly. The key is read only from
- * the injected env, never logged.
+ * (mirrors createRedis). The env is injected by the caller (which passes
+ * loadEnv()), keeping secret handling pure and testable — no ambient reads.
+ * Throws a
+ * clear error naming OPENAI_API_KEY if it is absent/empty so a misconfigured
+ * deploy fails loudly. The key is read only from the injected env, never logged.
  */
-export function createOpenAIClient(
-  env: OpenAIEnv = { OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "" },
-): OpenAI {
+export function createOpenAIClient(env: OpenAIEnv): OpenAI {
   if (!env.OPENAI_API_KEY) {
     throw new Error("Cannot create OpenAI client — missing: OPENAI_API_KEY");
   }
