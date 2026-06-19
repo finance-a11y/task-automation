@@ -48,13 +48,23 @@ export const MEMBER_ALIASES = {
   cami: "Cammila Hernandez",
   arianna: "Arianna Lupi",
   ari: "Arianna Lupi",
+  juan: "Juan Carlos Angulo",
 } as const satisfies Record<string, MemberName>;
 
 /**
- * Slack user-id → ClickUp member-id override map. Empty by default because the
- * Slack workspace isn't wired yet (Slack ids are unknown until then). It exists
- * so real ids can be slotted in later — via env override or by populating this
- * constant — without any resolver code changes (per CONTEXT specifics). The
- * resolver checks this map first, before name/alias resolution.
+ * Slack user-id → ClickUp member-id override map. When a message @-mentions a
+ * person, Slack sends an opaque user id (e.g. "<@U08VBSU8FK9>") instead of a
+ * name, so this map is what turns a mention into the right ClickUp assignee.
+ * Ids resolved from the live aprendoseo workspace (2026-06-19). Oriana Reyes and
+ * Fernando Perez are not in this Slack workspace, so they have no entry (they
+ * still resolve by name/alias if typed as text).
  */
-export const SLACK_TO_MEMBER: Record<string, number> = {};
+export const SLACK_TO_MEMBER: Record<string, number> = {
+  U03K0BW7NH5: 150028631, // Arianna Lupi
+  U08VBSU8FK9: 216178477, // Juan Carlos Angulo
+  U08N75GPHGS: 100128182, // Cammila Hernandez
+  U09064ATJF5: 118065209, // Veronica Romero
+  U0BB7J15SCQ: 216158839, // Miguel Pacheco
+  U05MHPX2D5L: 112092886, // Amira El Sahli
+  U094NK6HWQ3: 105901293, // Natalia Olivares
+};

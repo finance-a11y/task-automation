@@ -64,4 +64,20 @@ describe("resolveAssignees (PARSE-03)", () => {
       unresolved: ["constructor"],
     });
   });
+
+  it("resolves a Slack mention <@U123> and a bare U123 via the slackToMember map", () => {
+    const slackToMember = { U123ABC: MIGUEL };
+    expect(resolveAssignees(["<@U123ABC>"], { slackToMember })).toEqual({
+      ids: [MIGUEL],
+      unresolved: [],
+    });
+    expect(resolveAssignees(["<@U123ABC|miguel>"], { slackToMember })).toEqual({
+      ids: [MIGUEL],
+      unresolved: [],
+    });
+    expect(resolveAssignees(["U123ABC"], { slackToMember })).toEqual({
+      ids: [MIGUEL],
+      unresolved: [],
+    });
+  });
 });

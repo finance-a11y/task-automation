@@ -58,11 +58,15 @@ function resolveOne(
   if (trimmed.length === 0) return null;
 
   // 1) Slack user-id override (exact, case-sensitive — Slack ids are opaque).
+  // Normalize a Slack mention first: "<@U123>" or "<@U123|name>" → "U123" so an
+  // @-mention in the message resolves via the map; a bare "U123" is used as-is.
   // Guard with Object.hasOwn so inherited Object.prototype keys (e.g.
   // "constructor", "toString", "hasOwnProperty") can never resolve to a
   // prototype member and invent an id (Pitfall 4 / prototype pollution).
-  const slackHit = slackToMember[trimmed];
-  if (Object.hasOwn(slackToMember, trimmed) && slackHit !== undefined) {
+  const mention = trimmed.match(/^<@([UW][A-Z0-9]+)(?:\|[^>]*)?>$/);
+  const slackKey = mention ? mention[1]! : trimmed;
+  const slackHit = slackToMember[slackKey];
+  if (Object.hasOwn(slackToMember, slackKey) && slackHit !== undefined) {
     return slackHit;
   }
 

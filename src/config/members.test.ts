@@ -30,8 +30,14 @@ describe("members config-as-code", () => {
     }
   });
 
-  it("exports an empty, typed Slack→member override map", () => {
-    expect(SLACK_TO_MEMBER).toEqual({});
+  it("exports a Slack→member override map whose values are all real member ids", () => {
+    const memberIds = new Set<number>(Object.values(MEMBERS));
+    const entries = Object.entries(SLACK_TO_MEMBER);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [slackId, memberId] of entries) {
+      expect(slackId).toMatch(/^[UW][A-Z0-9]+$/); // opaque Slack user id
+      expect(memberIds.has(memberId)).toBe(true); // never an invented id
+    }
     // typed as Record<string, number> — assignment compiles
     const probe: Record<string, number> = SLACK_TO_MEMBER;
     expect(probe).toBeDefined();
