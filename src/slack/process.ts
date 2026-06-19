@@ -3,6 +3,7 @@ import {
   markEventOnce,
   clearEvent,
   putPending,
+  isKillSwitchActive,
   type RedisLike,
   type PendingTask,
 } from "../store/redis.js";
@@ -79,6 +80,16 @@ export async function processMessageEvent(
   let marked = false;
   try {
     if (!event.eventId) return;
+
+    // HARD-03: operational kill switch. Checked at the VERY top of the capture
+    // path — before markEventOnce — so an active switch consumes nothing: no
+    // dedup key, no parse spend, no preview. Default off (absent key = enabled)
+    // and fail-open (a Redis outage still processes; see isKillSwitchActive).
+    const switchChannel = event.message?.channel;
+    if (switchChannel && (await isKillSwitchActive(deps.redis, switchChannel))) {
+      console.error("[slack] kill switch active for channel", switchChannel);
+      return;
+    }
 
     const first = await markEventOnce(deps.redis, event.eventId);
     if (!first) return; // duplicate / Slack retry — already handled

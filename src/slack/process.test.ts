@@ -6,7 +6,7 @@ import {
   type ProcessDeps,
 } from "./process.js";
 import { PARSE_ERROR_MESSAGE, GENERIC_ERROR_MESSAGE } from "./report.js";
-import type { RedisLike } from "../store/redis.js";
+import { setKillSwitch, type RedisLike } from "../store/redis.js";
 import type { OpenAILike } from "../llm/openai.js";
 import type { ParsedTask } from "../resolve/types.js";
 
@@ -230,5 +230,71 @@ describe("processMessageEvent", () => {
     await expect(
       processMessageEvent(d, { eventId: "E4", message: goodMessage }),
     ).resolves.toBeUndefined();
+  });
+
+  it("HARD-03: an active per-channel kill switch makes the capture path a no-op", async () => {
+    const d = deps();
+    const redis = d.redis as ReturnType<typeof memRedis>;
+    const parseSpy = (d.parseDeps.client as unknown as {
+      chat: { completions: { parse: ReturnType<typeof vi.fn> } };
+    }).chat.completions.parse;
+    await setKillSwitch(redis, TASK_CHANNEL, true);
+    redis.set.mockClear();
+
+    await processMessageEvent(d, { eventId: "Ekill", message: goodMessage });
+
+    // Nothing observable happened: no dedup key, no pending, no parse, no preview.
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(parseSpy).not.toHaveBeenCalled();
+    expect(
+      (d.client as ReturnType<typeof fakeClient>).chat.postMessage,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("HARD-03: a global killswitch:all disables every channel", async () => {
+    const d = deps();
+    const redis = d.redis as ReturnType<typeof memRedis>;
+    await setKillSwitch(redis, "all", true);
+    redis.set.mockClear();
+
+    await processMessageEvent(d, { eventId: "Eall", message: goodMessage });
+
+    expect(
+      (d.client as ReturnType<typeof fakeClient>).chat.postMessage,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("HARD-03: the switch absent (default) processes normally", async () => {
+    const d = deps();
+    await processMessageEvent(d, { eventId: "Eon", message: goodMessage });
+    expect(
+      (d.client as ReturnType<typeof fakeClient>).chat.postMessage,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("HARD-03: a Redis failure in the switch check fails open (still processes)", async () => {
+    const d = deps();
+    const redis = d.redis as ReturnType<typeof memRedis>;
+    // The first get is the kill-switch lookup — make it throw → fail open.
+    (redis.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("redis down"),
+    );
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await processMessageEvent(d, { eventId: "Efailopen", message: goodMessage });
+
+    expect(
+      (d.client as ReturnType<typeof fakeClient>).chat.postMessage,
+    ).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("HARD-02: a redelivered Slack event_id posts exactly one preview (markEventOnce)", async () => {
+    const d = deps();
+    await processMessageEvent(d, { eventId: "Eredeliver", message: goodMessage });
+    await processMessageEvent(d, { eventId: "Eredeliver", message: goodMessage });
+    expect(
+      (d.client as ReturnType<typeof fakeClient>).chat.postMessage,
+    ).toHaveBeenCalledTimes(1);
   });
 });
