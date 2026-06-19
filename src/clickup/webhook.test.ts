@@ -298,6 +298,23 @@ describe("processClickUpWebhook — scoping, dedup, fallbacks", () => {
     expect(text).not.toContain("<!channel>");
   });
 
+  it("treats a malformed (non-array) history_items as a no-op (IN-02)", async () => {
+    const redis = memRedis();
+    await seedThread(redis);
+    const { slack, post } = spyPoster();
+    await expect(
+      processClickUpWebhook(
+        { redis, slack, getTaskName: async () => "T" },
+        {
+          event: "taskStatusUpdated",
+          task_id: TASK,
+          history_items: "not-an-array",
+        } as never,
+      ),
+    ).resolves.toBeUndefined();
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("does not throw when the Slack post itself fails", async () => {
     const redis = memRedis();
     await seedThread(redis);

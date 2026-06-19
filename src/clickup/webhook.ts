@@ -219,7 +219,8 @@ async function runWebhook(
   const taskId = payload.task_id;
   if (typeof taskId !== "string" || taskId.length === 0) return;
 
-  const items = payload.history_items ?? [];
+  // Defensive: a malformed (non-array) history_items must be a no-op, not a throw.
+  const items = Array.isArray(payload.history_items) ? payload.history_items : [];
 
   // 2. Filter to a meaningful transition (noise dropped here).
   let kind: "status" | "assignee";
