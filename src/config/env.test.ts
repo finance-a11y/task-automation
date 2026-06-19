@@ -11,6 +11,8 @@ const valid = (): Record<string, string | undefined> => ({
   OPENAI_API_KEY: "sk-test",
   CLICKUP_API_TOKEN: "pk-test",
   CLICKUP_LIST_ID: "901327239630",
+  CLICKUP_WEBHOOK_SECRET: "whsec-test",
+  CLICKUP_TEAM_ID: "90131720021",
 });
 
 describe("loadEnv", () => {
@@ -25,6 +27,32 @@ describe("loadEnv", () => {
     expect(env.OPENAI_API_KEY).toBe("sk-test");
     expect(env.CLICKUP_API_TOKEN).toBe("pk-test");
     expect(env.CLICKUP_LIST_ID).toBe("901327239630");
+    expect(env.CLICKUP_WEBHOOK_SECRET).toBe("whsec-test");
+    expect(env.CLICKUP_TEAM_ID).toBe("90131720021");
+  });
+
+  it("throws an Error naming CLICKUP_WEBHOOK_SECRET when it is absent", () => {
+    const src = valid();
+    delete src.CLICKUP_WEBHOOK_SECRET;
+    expect(() => loadEnv(src)).toThrow(/CLICKUP_WEBHOOK_SECRET/);
+  });
+
+  it("treats an empty-string CLICKUP_WEBHOOK_SECRET as missing and throws naming it", () => {
+    const src = valid();
+    src.CLICKUP_WEBHOOK_SECRET = "";
+    expect(() => loadEnv(src)).toThrow(/CLICKUP_WEBHOOK_SECRET/);
+  });
+
+  it("defaults CLICKUP_TEAM_ID to 90131720021 when absent", () => {
+    const src = valid();
+    delete src.CLICKUP_TEAM_ID;
+    expect(loadEnv(src).CLICKUP_TEAM_ID).toBe("90131720021");
+  });
+
+  it("respects an explicit CLICKUP_TEAM_ID override", () => {
+    const src = valid();
+    src.CLICKUP_TEAM_ID = "12345";
+    expect(loadEnv(src).CLICKUP_TEAM_ID).toBe("12345");
   });
 
   it("throws an Error naming CLICKUP_API_TOKEN when it is absent", () => {
