@@ -1,31 +1,40 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   processMessageEvent,
-  RECEIPT_TEXT,
   type SlackClientLike,
   type ProcessDeps,
 } from "./process.js";
 import type { RedisLike } from "../store/redis.js";
+import type { OpenAILike } from "../llm/openai.js";
+import type { ParsedTask } from "../resolve/types.js";
 
 const TASK_CHANNEL = "C_TASK";
 
-function nxRedis(): RedisLike & {
+/** In-memory RedisLike honoring nx (set) + GETDEL, with spyable set/del. */
+function memRedis(): RedisLike & {
   set: ReturnType<typeof vi.fn>;
   del: ReturnType<typeof vi.fn>;
 } {
-  const seen = new Set<string>();
+  const store = new Map<string, unknown>();
+  const set = vi.fn(async (key: string, value: unknown, opts?: { nx?: true }) => {
+    if (opts?.nx && store.has(key)) return null;
+    store.set(key, value);
+    return "OK";
+  });
+  const del = vi.fn(async (...keys: string[]) => {
+    let removed = 0;
+    for (const key of keys) if (store.delete(key)) removed += 1;
+    return removed;
+  });
   return {
-    set: vi.fn(async (key: string) => {
-      if (seen.has(key)) return null;
-      seen.add(key);
-      return "OK";
-    }),
-    del: vi.fn(async (...keys: string[]) => {
-      let removed = 0;
-      for (const key of keys) {
-        if (seen.delete(key)) removed += 1;
-      }
-      return removed;
+    set,
+    del,
+    get: vi.fn(async (k: string) => (store.has(k) ? store.get(k) : null)),
+    getdel: vi.fn(async (k: string) => {
+      if (!store.has(k)) return null;
+      const v = store.get(k);
+      store.delete(k);
+      return v;
     }),
   };
 }
@@ -36,11 +45,37 @@ function fakeClient(): SlackClientLike & {
   return { chat: { postMessage: vi.fn().mockResolvedValue({ ok: true }) } };
 }
 
+/** A fake OpenAILike returning a fixed ParsedTask so the pipeline runs offline. */
+function fakeParseClient(parsed: ParsedTask): OpenAILike {
+  return {
+    chat: {
+      completions: {
+        parse: vi.fn(async () => ({
+          choices: [{ message: { parsed, refusal: null } }],
+        })),
+      },
+    },
+  };
+}
+
+const parsedTask: ParsedTask = {
+  title: "Diseñar landing",
+  description: "landing de campaña",
+  clienteRaw: "feli",
+  assigneesRaw: ["miguel"],
+  startDatePhrase: null,
+  dueDatePhrase: null,
+  links: [],
+};
+
 function deps(over: Partial<ProcessDeps> = {}): ProcessDeps {
   return {
-    redis: nxRedis(),
+    redis: memRedis(),
     client: fakeClient(),
-    env: { SLACK_TASK_CHANNEL_ID: TASK_CHANNEL },
+    env: { SLACK_TASK_CHANNEL_ID: TASK_CHANNEL, TEAM_TIMEZONE: "America/Caracas" },
+    parseDeps: { client: fakeParseClient(parsedTask), model: "gpt-4o-mini", timezone: "America/Caracas" },
+    genPendingId: () => "PID-test",
+    now: () => Date.UTC(2026, 5, 18, 12, 0, 0),
     botUserId: "U_BOT",
     ...over,
   };
@@ -50,23 +85,33 @@ const goodMessage = {
   channel: TASK_CHANNEL,
   user: "U_HUMAN",
   ts: "1700000000.000100",
+  text: "diseñar landing para feli con miguel",
 };
 
 describe("processMessageEvent", () => {
-  it("posts exactly one in-thread receipt for a valid captured message", async () => {
+  it("parses, persists a pending, and posts a preview (not the placeholder)", async () => {
     const d = deps();
     await processMessageEvent(d, { eventId: "E1", message: goodMessage });
+
+    const redis = d.redis as ReturnType<typeof memRedis>;
+    // A pending was written under pending:<id>.
+    expect(redis.set).toHaveBeenCalledWith(
+      "pending:PID-test",
+      expect.any(String),
+      expect.objectContaining({ ex: expect.any(Number) }),
+    );
+
     const post = (d.client as ReturnType<typeof fakeClient>).chat.postMessage;
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post).toHaveBeenCalledWith({
-      channel: TASK_CHANNEL,
-      thread_ts: goodMessage.ts,
-      text: RECEIPT_TEXT,
-    });
-    expect(RECEIPT_TEXT.length).toBeGreaterThan(0);
+    const arg = post.mock.calls[0]![0];
+    expect(arg.channel).toBe(TASK_CHANNEL);
+    expect(arg.thread_ts).toBe(goodMessage.ts);
+    expect(Array.isArray(arg.blocks)).toBe(true);
+    // The preview carries the resolved cliente name, not the 👀 placeholder.
+    expect(JSON.stringify(arg.blocks)).toContain("Felipe Vergara");
   });
 
-  it("dedups: a retry of the same event_id posts no second receipt", async () => {
+  it("dedups: a retry of the same event_id posts no second preview", async () => {
     const d = deps();
     await processMessageEvent(d, { eventId: "Edup", message: goodMessage });
     await processMessageEvent(d, { eventId: "Edup", message: goodMessage });
@@ -90,8 +135,46 @@ describe("processMessageEvent", () => {
       eventId: "E3",
       message: { ...goodMessage, user: "U_BOT" },
     });
-    const post = (d.client as ReturnType<typeof fakeClient>).chat.postMessage;
-    expect(post).not.toHaveBeenCalled();
+    expect((d.client as ReturnType<typeof fakeClient>).chat.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("skips a processable message with empty text (no preview)", async () => {
+    const d = deps();
+    await processMessageEvent(d, {
+      eventId: "E_empty",
+      message: { ...goodMessage, text: "   " },
+    });
+    expect((d.client as ReturnType<typeof fakeClient>).chat.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("does NOT clear the dedup key when parseAndResolve fails (no re-parse spend)", async () => {
+    const redis = memRedis();
+    const badParse: OpenAILike = {
+      chat: {
+        completions: { parse: vi.fn(async () => { throw new Error("LLM down"); }) },
+      },
+    };
+    const d = deps({
+      redis,
+      parseDeps: { client: badParse, model: "gpt-4o-mini", timezone: "America/Caracas" },
+    });
+    await expect(
+      processMessageEvent(d, { eventId: "Eparse", message: goodMessage }),
+    ).resolves.toBeUndefined();
+    expect(redis.del).not.toHaveBeenCalled();
+  });
+
+  it("clears the dedup key on a transient postMessage failure so a redelivery re-posts", async () => {
+    const redis = memRedis();
+    const client = fakeClient();
+    client.chat.postMessage.mockRejectedValueOnce(new Error("slack 429"));
+    const d = deps({ redis, client });
+
+    await processMessageEvent(d, { eventId: "Eretry", message: goodMessage });
+    expect(redis.del).toHaveBeenCalledWith("evt:Eretry");
+
+    await processMessageEvent(d, { eventId: "Eretry", message: goodMessage });
+    expect(client.chat.postMessage).toHaveBeenCalledTimes(2);
   });
 
   it("never throws into the ack path when postMessage rejects", async () => {
@@ -101,35 +184,5 @@ describe("processMessageEvent", () => {
     await expect(
       processMessageEvent(d, { eventId: "E4", message: goodMessage }),
     ).resolves.toBeUndefined();
-  });
-
-  it("clears the dedup key on a transient postMessage failure so a redelivery re-posts", async () => {
-    const redis = nxRedis();
-    const client = fakeClient();
-    // First attempt fails transiently; the redelivery succeeds.
-    client.chat.postMessage.mockRejectedValueOnce(new Error("slack 429"));
-    const d = deps({ redis, client });
-
-    await processMessageEvent(d, { eventId: "Eretry", message: goodMessage });
-    // The dedup key must have been released after the failed receipt.
-    expect(redis.del).toHaveBeenCalledWith("evt:Eretry");
-    expect(client.chat.postMessage).toHaveBeenCalledTimes(1);
-
-    // Slack redelivers the same event_id — it must be re-attempted and posted.
-    await processMessageEvent(d, { eventId: "Eretry", message: goodMessage });
-    expect(client.chat.postMessage).toHaveBeenCalledTimes(2);
-  });
-
-  it("does NOT clear the dedup key for a true duplicate on the success path", async () => {
-    const redis = nxRedis();
-    const client = fakeClient();
-    const d = deps({ redis, client });
-
-    await processMessageEvent(d, { eventId: "Eok", message: goodMessage });
-    await processMessageEvent(d, { eventId: "Eok", message: goodMessage });
-
-    // Receipt posted exactly once, and the key was never released.
-    expect(client.chat.postMessage).toHaveBeenCalledTimes(1);
-    expect(redis.del).not.toHaveBeenCalled();
   });
 });

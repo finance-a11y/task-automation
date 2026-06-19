@@ -9,6 +9,8 @@ export type IncomingMessage = {
   user?: string;
   ts?: string;
   thread_ts?: string;
+  /** The message body text (the task description the human typed). */
+  text?: string;
 };
 
 /**
