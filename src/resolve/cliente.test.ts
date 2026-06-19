@@ -24,4 +24,13 @@ describe("resolveCliente (PARSE-02)", () => {
     expect(resolveCliente(null)).toBeNull();
     expect(resolveCliente("   ")).toBeNull();
   });
+
+  it("returns null for Object.prototype keys (prototype-pollution guard)", () => {
+    // Inherited prototype members must never resolve to a UUID nor leak
+    // `undefined` through the `string | null` contract (Pitfall 4).
+    expect(resolveCliente("constructor")).toBeNull();
+    expect(resolveCliente("toString")).toBeNull();
+    expect(resolveCliente("hasOwnProperty")).toBeNull();
+    expect(resolveCliente("valueOf")).toBeNull();
+  });
 });

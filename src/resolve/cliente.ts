@@ -11,13 +11,18 @@ export function resolveCliente(raw: string | null): string | null {
   const norm = raw.trim().toLowerCase();
   if (norm.length === 0) return null;
 
-  // Exact canonical-name match (case-insensitive).
+  // Exact canonical-name match (case-insensitive). Object.keys yields only own
+  // enumerable keys, so this loop is already prototype-safe.
   for (const name of Object.keys(CLIENTS) as ClientName[]) {
     if (name.toLowerCase() === norm) return CLIENTS[name];
   }
 
-  // Alias match.
-  const aliased = (CLIENT_ALIASES as Record<string, ClientName>)[norm];
+  // Alias match — guard with Object.hasOwn so inherited Object.prototype keys
+  // (e.g. "constructor", "toString") can never resolve to a prototype member.
+  // Always returns null (not undefined) on no match, honoring the contract.
+  const aliased = Object.hasOwn(CLIENT_ALIASES, norm)
+    ? (CLIENT_ALIASES as Record<string, ClientName>)[norm]
+    : undefined;
   if (aliased) return CLIENTS[aliased];
 
   return null;
