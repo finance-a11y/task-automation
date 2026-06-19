@@ -159,6 +159,43 @@ describe("handleConfirm", () => {
     expect(await getPending(redis, "PID")).toEqual(pending);
     expect(slack.chat.update).not.toHaveBeenCalled();
   });
+
+  it("CR-01: a post-create failure (chat.update throws) does NOT restore the pending and a second confirm does not recreate", async () => {
+    const redis = memRedis();
+    await putPending(redis, "PID", pending);
+    const clickup = fakeClickup();
+    const slack = fakeSlack();
+    // chat.update throws on the FIRST confirm, AFTER createTask already succeeded.
+    slack.chat.update.mockImplementationOnce(async () => {
+      throw new Error("Slack chat.update 500");
+    });
+    const deps: InteractionDeps = { redis, clickup, slack, timezone: "America/Caracas" };
+
+    // First confirm: createTask succeeds, chat.update fails (swallowed, best-effort).
+    await expect(handleConfirm(deps, ref)).resolves.toBeUndefined();
+    expect(clickup.createTask).toHaveBeenCalledTimes(1);
+    // Point of no return: pending consumed, NOT restored.
+    expect(await getPending(redis, "PID")).toBeNull();
+    // Other post-create steps still ran (best-effort continue).
+    expect(slack.chat.postMessage).toHaveBeenCalledTimes(1);
+
+    // Second confirm: pending is gone → must NOT create again (no duplicate).
+    await handleConfirm(deps, ref);
+    expect(clickup.createTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("WR-01: a confirm on an already-claimed/expired pending posts a feedback notice", async () => {
+    const redis = memRedis(); // no pending seeded → claim returns null
+    const slack = fakeSlack();
+    const deps: InteractionDeps = { redis, clickup: fakeClickup(), slack, timezone: "America/Caracas" };
+
+    await handleConfirm(deps, ref);
+    expect(deps.clickup.createTask).not.toHaveBeenCalled();
+    expect(slack.chat.postMessage).toHaveBeenCalledTimes(1);
+    const post = slack.chat.postMessage.mock.calls[0]![0];
+    expect(post.thread_ts).toBe(ref.messageTs);
+    expect(post.text).toContain("expiró");
+  });
 });
 
 describe("handleCancel", () => {
@@ -183,12 +220,14 @@ describe("handleEditOpen", () => {
     expect(meta).toEqual({ pendingId: "PID", channel: "C_TASK", messageTs: "1700000000.000100" });
   });
 
-  it("is a no-op when the pending has expired", async () => {
+  it("does not open but posts a feedback notice when the pending has expired (WR-02)", async () => {
     const redis = memRedis();
     const slack = fakeSlack();
     const deps: InteractionDeps = { redis, clickup: fakeClickup(), slack, timezone: "America/Caracas" };
     await handleEditOpen(deps, { ...ref, triggerId: "TRIG-1" });
     expect(slack.views.open).not.toHaveBeenCalled();
+    expect(slack.chat.postMessage).toHaveBeenCalledTimes(1);
+    expect(slack.chat.postMessage.mock.calls[0]![0].text).toContain("expiró");
   });
 });
 
@@ -236,11 +275,23 @@ describe("handleEditSubmit", () => {
     expect(JSON.stringify(upd.blocks)).toContain("Children Chic");
   });
 
-  it("is a no-op when the pending expired between open and submit", async () => {
+  it("does not re-render but posts a feedback notice when the pending expired between open and submit (WR-02)", async () => {
     const redis = memRedis();
     const slack = fakeSlack();
     const deps: InteractionDeps = { redis, clickup: fakeClickup(), slack, timezone: "America/Caracas" };
     await handleEditSubmit(deps, editView({ cliente: null }));
+    expect(slack.chat.update).not.toHaveBeenCalled();
+    expect(slack.chat.postMessage).toHaveBeenCalledTimes(1);
+    expect(slack.chat.postMessage.mock.calls[0]![0].text).toContain("expiró");
+  });
+
+  it("WR-04: aborts cleanly (no throw, no update) on malformed private_metadata", async () => {
+    const redis = memRedis();
+    await putPending(redis, "PID", pending);
+    const slack = fakeSlack();
+    const deps: InteractionDeps = { redis, clickup: fakeClickup(), slack, timezone: "America/Caracas" };
+    const bad = { private_metadata: "{not valid json", state: { values: {} } };
+    await expect(handleEditSubmit(deps, bad)).resolves.toBeUndefined();
     expect(slack.chat.update).not.toHaveBeenCalled();
   });
 });
