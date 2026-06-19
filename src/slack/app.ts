@@ -1,8 +1,19 @@
 import { App } from "@slack/bolt";
 import { VercelReceiver, createHandler, type VercelHandler } from "@vercel/slack-bolt";
+import crypto from "node:crypto";
 import type { Env } from "../config/env.js";
 import { createRedis } from "../store/redis.js";
 import { processMessageEvent } from "./process.js";
+import {
+  handleConfirm,
+  handleCancel,
+  type InteractionDeps,
+  type SlackInteractionClient,
+} from "./interactions.js";
+import { createClickUpClient } from "../clickup/client.js";
+import { createOpenAIClient } from "../llm/openai.js";
+import { SLACK_TO_MEMBER } from "../config/members.js";
+import type { ParseAndResolveDeps } from "../parseAndResolve.js";
 import type { IncomingMessage } from "./filter.js";
 
 export type SlackApp = {
@@ -30,9 +41,6 @@ function makeBotUserIdResolver(): (
         .test()
         .then((res) => {
           const userId = res.user_id ?? undefined;
-          // A successful auth.test that returns no user_id is not a usable
-          // result — don't cache it, so a later event can re-resolve instead of
-          // being stuck with `undefined` forever.
           if (userId === undefined) cached = undefined;
           return userId;
         })
@@ -49,14 +57,22 @@ function makeBotUserIdResolver(): (
   };
 }
 
+/** Narrow the Bolt Web client to the SlackInteractionClient shape we inject. */
+function asInteractionClient(client: unknown): SlackInteractionClient {
+  return client as SlackInteractionClient;
+}
+
 /**
  * Build the Bolt App wired to the Vercel adapter. Signature verification and the
  * ACK<3s → background `waitUntil` pattern are handled by the receiver/adapter —
  * no hand-rolled HMAC (INGEST-01/02). The message listener delegates to
- * processMessageEvent (dedup + filter + receipt, INGEST-03/04).
+ * processMessageEvent (dedup + filter + parse + preview); button clicks route to
+ * app.action handlers which ack() first, then create/cancel in the background.
  *
  * `tokenVerification: false` keeps construction/init network-free (offline
- * testable); the bot user id is resolved lazily on first event instead.
+ * testable); the bot user id is resolved lazily on first event instead. Heavy
+ * clients (Redis / OpenAI / ClickUp) are constructed lazily, once per warm
+ * instance, on first use.
  */
 export function createSlackApp(env: Env): SlackApp {
   const receiver = new VercelReceiver({
@@ -65,20 +81,39 @@ export function createSlackApp(env: Env): SlackApp {
 
   const app = new App({
     receiver,
-    // Provide `authorize` (not `token`) so App.init() stays network-free and
-    // offline-testable; the bot token is supplied per-event for the Web client.
     authorize: async () => ({ botToken: env.SLACK_BOT_TOKEN }),
-    // The @vercel/slack-bolt adapter calls app.init() itself; deferred init is
-    // what makes that supported (stores the authorize fn for init()).
     deferInitialization: true,
   });
 
   const resolveBotUserId = makeBotUserIdResolver();
 
-  // Single Redis client per warm instance — env validation and client
-  // construction run once (lazily, on first event) rather than per message.
+  // Single instance of each heavy client per warm instance (lazy on first use).
   let redis: ReturnType<typeof createRedis> | undefined;
   const getRedis = () => (redis ??= createRedis(env));
+
+  let clickup: ReturnType<typeof createClickUpClient> | undefined;
+  const getClickup = () =>
+    (clickup ??= createClickUpClient({
+      token: env.CLICKUP_API_TOKEN,
+      listId: env.CLICKUP_LIST_ID,
+      fetch: globalThis.fetch as unknown as Parameters<typeof createClickUpClient>[0]["fetch"],
+    }));
+
+  let parseDeps: ParseAndResolveDeps | undefined;
+  const getParseDeps = (): ParseAndResolveDeps =>
+    (parseDeps ??= {
+      client: createOpenAIClient({ OPENAI_API_KEY: env.OPENAI_API_KEY }),
+      model: env.OPENAI_MODEL,
+      timezone: env.TEAM_TIMEZONE,
+      slackToMember: SLACK_TO_MEMBER,
+    });
+
+  const interactionDeps = (client: unknown): InteractionDeps => ({
+    redis: getRedis(),
+    clickup: getClickup(),
+    slack: asInteractionClient(client),
+    timezone: env.TEAM_TIMEZONE,
+  });
 
   app.message(async ({ message, body, client }) => {
     const eventId =
@@ -88,9 +123,38 @@ export function createSlackApp(env: Env): SlackApp {
     const botUserId = await resolveBotUserId(client as unknown as AuthTestClient);
 
     await processMessageEvent(
-      { redis: getRedis(), client, env, botUserId },
+      {
+        redis: getRedis(),
+        client,
+        env,
+        parseDeps: getParseDeps(),
+        genPendingId: () => crypto.randomUUID(),
+        botUserId,
+      },
       { eventId, message: message as IncomingMessage },
     );
+  });
+
+  // Extract pendingId from the clicked button's value, and channel/messageTs
+  // from the interaction container.
+  const refFrom = (body: unknown, action: unknown) => {
+    const container = (body as { container?: { channel_id?: string; message_ts?: string } })
+      .container ?? {};
+    return {
+      pendingId: String((action as { value?: string }).value ?? ""),
+      channel: container.channel_id ?? "",
+      messageTs: container.message_ts ?? "",
+    };
+  };
+
+  app.action("confirm_task", async ({ ack, body, action, client }) => {
+    await ack(); // ACK<3s; the ClickUp create runs after in the adapter waitUntil
+    await handleConfirm(interactionDeps(client), refFrom(body, action));
+  });
+
+  app.action("cancel_task", async ({ ack, body, action, client }) => {
+    await ack();
+    await handleCancel(interactionDeps(client), refFrom(body, action));
   });
 
   const handler = createHandler(app, receiver);
