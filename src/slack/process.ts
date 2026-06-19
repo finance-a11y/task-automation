@@ -81,24 +81,14 @@ export async function processMessageEvent(
   try {
     if (!event.eventId) return;
 
-    // HARD-03: operational kill switch. Checked at the VERY top of the capture
-    // path — before markEventOnce — so an active switch consumes nothing: no
-    // dedup key, no parse spend, no preview. Default off (absent key = enabled)
-    // and fail-open (a Redis outage still processes; see isKillSwitchActive).
-    const switchChannel = event.message?.channel;
-    if (switchChannel && (await isKillSwitchActive(deps.redis, switchChannel))) {
-      console.error("[slack] kill switch active for channel", switchChannel);
-      return;
-    }
-
-    const first = await markEventOnce(deps.redis, event.eventId);
-    if (!first) {
-      console.log("[slack] duplicate event, skipping", { eventId: event.eventId });
-      return; // duplicate / Slack retry — already handled
-    }
-    marked = true;
-
     const { message } = event;
+
+    // Echo-loop / relevance filter FIRST — a pure, I/O-free check, run BEFORE any
+    // Redis call. Critical: this drops the bot's OWN messages (bot_id present,
+    // e.g. its "Algo falló" error notices) and wrong-channel/subtype/non-root
+    // messages even when Redis is unreachable. If this ran after a failing Redis
+    // call, a Redis outage would turn each error notice the bot posts into a new
+    // event it reprocesses → infinite spam loop.
     if (
       !isProcessableMessage(message, {
         taskChannelId: deps.env.SLACK_TASK_CHANNEL_ID,
@@ -122,6 +112,21 @@ export async function processMessageEvent(
       });
       return;
     }
+
+    // HARD-03: operational kill switch (Redis, fail-open). After the pure filter
+    // so an outage can't loop, but before any parse spend.
+    if (message.channel && (await isKillSwitchActive(deps.redis, message.channel))) {
+      console.error("[slack] kill switch active for channel", message.channel);
+      return;
+    }
+
+    const first = await markEventOnce(deps.redis, event.eventId);
+    if (!first) {
+      console.log("[slack] duplicate event, skipping", { eventId: event.eventId });
+      return; // duplicate / Slack retry — already handled
+    }
+    marked = true;
+
     console.log("[slack] message accepted, parsing", { eventId: event.eventId });
 
     const channel = message.channel;
