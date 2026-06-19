@@ -52,7 +52,10 @@ function memRedis(): RedisLike {
 function fakeClickup(
   result = { id: "task1", url: "https://app.clickup.com/t/task1" },
 ): ClickUpClient & { createTask: ReturnType<typeof vi.fn> } {
-  return { createTask: vi.fn(async () => result) };
+  return {
+    createTask: vi.fn(async () => result),
+    getTask: vi.fn(async () => ({ id: result.id, name: "Tarea" })),
+  };
 }
 
 type UpdateArgs = { channel: string; ts: string; text: string; blocks?: unknown };
@@ -150,7 +153,10 @@ describe("handleConfirm", () => {
   it("restores the pending if createTask throws after the claim", async () => {
     const redis = memRedis();
     await putPending(redis, "PID", pending);
-    const clickup = { createTask: vi.fn(async () => { throw new Error("ClickUp 500"); }) };
+    const clickup = {
+      createTask: vi.fn(async () => { throw new Error("ClickUp 500"); }),
+      getTask: vi.fn(async () => ({ id: "task1", name: "Tarea" })),
+    };
     const slack = fakeSlack();
     const deps: InteractionDeps = { redis, clickup, slack, timezone: "America/Caracas" };
 
