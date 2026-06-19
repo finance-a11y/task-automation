@@ -159,4 +159,34 @@ describe("parseEditSubmission", () => {
     expect(patch.startDateMs).toBeNull();
     expect(patch.dueDateMs).toBeNull();
   });
+
+  it("WR-03: falls back to the first description line for a whitespace-only title", () => {
+    const { patch } = parseEditSubmission(
+      submission({ title: "   ", desc: "Primera línea\nsegunda línea" }),
+      { timezone: TZ },
+    );
+    expect(patch.title).toBe("Primera línea");
+  });
+
+  it("WR-03: falls back to a default title when both title and description are blank", () => {
+    const { patch } = parseEditSubmission(
+      submission({ title: "  \n ", desc: "   " }),
+      { timezone: TZ },
+    );
+    expect(patch.title).toBe("Tarea sin título");
+    expect((patch.title ?? "").trim().length).toBeGreaterThan(0);
+  });
+
+  it("WR-04: throws on invalid JSON in private_metadata", () => {
+    const bad = { private_metadata: "{not valid json", state: { values: {} } };
+    expect(() => parseEditSubmission(bad, { timezone: TZ })).toThrow();
+  });
+
+  it("WR-04: throws when private_metadata is missing required fields", () => {
+    const bad = {
+      private_metadata: JSON.stringify({ pendingId: "PID" }), // no channel/messageTs
+      state: { values: {} },
+    };
+    expect(() => parseEditSubmission(bad, { timezone: TZ })).toThrow();
+  });
 });

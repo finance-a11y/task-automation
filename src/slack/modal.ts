@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { z } from "zod";
 import { CLIENTS } from "../config/clients.js";
 import { MEMBERS } from "../config/members.js";
 import type { ResolvedTask } from "../resolve/types.js";
@@ -47,6 +48,53 @@ export type EditModalMeta = {
   channel: string;
   messageTs: string;
 };
+
+/**
+ * Schema guarding the JSON we round-trip through Slack's private_metadata. The
+ * value is opaque to Slack and could be malformed/tampered, so submissions are
+ * validated before use (WR-04) — parseEditSubmission throws on a bad payload and
+ * the caller aborts the interaction rather than crashing with a cast-gone-wrong.
+ */
+const EditModalMetaSchema = z.object({
+  pendingId: z.string().min(1),
+  channel: z.string().min(1),
+  messageTs: z.string().min(1),
+});
+
+/** Default title when the human leaves it blank/whitespace (WR-03). */
+const DEFAULT_TITLE = "Tarea sin título";
+
+/**
+ * Validate + parse private_metadata. Throws a descriptive error on invalid JSON
+ * or a payload that fails the schema, so the submission handler can log + abort.
+ */
+function parseMeta(raw: string | undefined): EditModalMeta {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw ?? "{}");
+  } catch {
+    throw new Error("private_metadata is not valid JSON");
+  }
+  const result = EditModalMetaSchema.safeParse(obj);
+  if (!result.success) {
+    throw new Error(`private_metadata failed validation: ${result.error.message}`);
+  }
+  return result.data;
+}
+
+/**
+ * Never let an empty/whitespace title reach ClickUp (createTask({name:""})).
+ * Fall back to the first non-empty line of the description, else a fixed default.
+ */
+function resolveTitle(titleRaw: string, descRaw: string): string {
+  const title = titleRaw.trim();
+  if (title) return title;
+  const firstDescLine = descRaw
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return firstDescLine ?? DEFAULT_TITLE;
+}
 
 export type EditModalView = Record<string, unknown>;
 
@@ -194,7 +242,7 @@ export function parseEditSubmission(
   view: SubmittedView,
   opts: { timezone: string },
 ): EditSubmission {
-  const meta = JSON.parse(view.private_metadata ?? "{}") as EditModalMeta;
+  const meta = parseMeta(view.private_metadata);
 
   const titleRaw = field(view, TITLE_BLOCK, TITLE_ACTION).value ?? "";
   const descRaw = field(view, DESC_BLOCK, DESC_ACTION).value ?? "";
@@ -204,7 +252,7 @@ export function parseEditSubmission(
   const entrega = field(view, ENTREGA_BLOCK, ENTREGA_ACTION).selected_date ?? null;
 
   const patch: Partial<ResolvedTask> = {
-    title: titleRaw.trim(),
+    title: resolveTitle(titleRaw, descRaw),
     description: descRaw.trim() ? descRaw.trim() : null,
     clienteOptionId: cliente,
     assigneeIds: asignados.map((o) => Number(o.value)),
