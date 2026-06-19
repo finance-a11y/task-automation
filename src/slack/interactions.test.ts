@@ -1,5 +1,25 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleConfirm, handleCancel, type InteractionDeps } from "./interactions.js";
+import {
+  handleConfirm,
+  handleCancel,
+  handleEditOpen,
+  handleEditSubmit,
+  type InteractionDeps,
+} from "./interactions.js";
+import {
+  TITLE_BLOCK,
+  TITLE_ACTION,
+  DESC_BLOCK,
+  DESC_ACTION,
+  CLIENTE_BLOCK,
+  CLIENTE_ACTION,
+  ASIGNADOS_BLOCK,
+  ASIGNADOS_ACTION,
+  INICIO_BLOCK,
+  INICIO_ACTION,
+  ENTREGA_BLOCK,
+  ENTREGA_ACTION,
+} from "./modal.js";
 import { putPending, getPending, type RedisLike, type PendingTask } from "../store/redis.js";
 import type { ClickUpClient } from "../clickup/client.js";
 import type { ResolvedTask } from "../resolve/types.js";
@@ -37,12 +57,16 @@ function fakeClickup(
 
 type UpdateArgs = { channel: string; ts: string; text: string; blocks?: unknown };
 type PostArgs = { channel: string; thread_ts?: string; text: string; blocks?: unknown };
+type OpenArgs = { trigger_id: string; view: Record<string, unknown> };
 
 function fakeSlack() {
   return {
     chat: {
       update: vi.fn(async (_a: UpdateArgs) => ({ ok: true })),
       postMessage: vi.fn(async (_a: PostArgs) => ({ ok: true })),
+    },
+    views: {
+      open: vi.fn(async (_a: OpenArgs) => ({ ok: true })),
     },
   };
 }
@@ -144,6 +168,80 @@ describe("handleCancel", () => {
     expect(await getPending(s.redis, "PID")).toBeNull();
     expect(s.slack.chat.update).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(s.slack.chat.update.mock.calls[0]![0].blocks)).toContain("Cancelado");
+  });
+});
+
+describe("handleEditOpen", () => {
+  it("opens a modal whose private_metadata carries the ids when the pending exists", async () => {
+    const s = await seeded();
+    await handleEditOpen(s.deps, { ...ref, triggerId: "TRIG-1" });
+
+    expect(s.slack.views.open).toHaveBeenCalledTimes(1);
+    const arg = s.slack.views.open.mock.calls[0]![0];
+    expect(arg.trigger_id).toBe("TRIG-1");
+    const meta = JSON.parse((arg.view as { private_metadata: string }).private_metadata);
+    expect(meta).toEqual({ pendingId: "PID", channel: "C_TASK", messageTs: "1700000000.000100" });
+  });
+
+  it("is a no-op when the pending has expired", async () => {
+    const redis = memRedis();
+    const slack = fakeSlack();
+    const deps: InteractionDeps = { redis, clickup: fakeClickup(), slack, timezone: "America/Caracas" };
+    await handleEditOpen(deps, { ...ref, triggerId: "TRIG-1" });
+    expect(slack.views.open).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleEditSubmit", () => {
+  function editView(over: { cliente?: string | null; entrega?: string | null }) {
+    return {
+      private_metadata: JSON.stringify({ pendingId: "PID", channel: "C_TASK", messageTs: "1700000000.000100" }),
+      state: {
+        values: {
+          [TITLE_BLOCK]: { [TITLE_ACTION]: { value: "Diseñar landing" } },
+          [DESC_BLOCK]: { [DESC_ACTION]: { value: "landing de campaña" } },
+          [CLIENTE_BLOCK]: { [CLIENTE_ACTION]: { selected_option: over.cliente ? { value: over.cliente } : null } },
+          [ASIGNADOS_BLOCK]: { [ASIGNADOS_ACTION]: { selected_options: [{ value: "216158839" }] } },
+          [INICIO_BLOCK]: { [INICIO_ACTION]: { selected_date: null } },
+          [ENTREGA_BLOCK]: { [ENTREGA_ACTION]: { selected_date: over.entrega ?? null } },
+        },
+      },
+    };
+  }
+
+  it("merges the patch onto the stored pending and re-renders the preview", async () => {
+    const redis = memRedis();
+    // Seed a pending whose cliente is unresolved and due date is null.
+    await putPending(redis, "PID", {
+      ...pending,
+      resolved: { ...resolved, clienteOptionId: null, dueDateMs: null },
+    });
+    const slack = fakeSlack();
+    const deps: InteractionDeps = { redis, clickup: fakeClickup(), slack, timezone: "America/Caracas" };
+
+    await handleEditSubmit(
+      deps,
+      editView({ cliente: "57123824-86d1-4fb8-a3a3-03fb1a8d8704", entrega: "2026-06-25" }),
+    );
+
+    // Pending updated with the corrected cliente + due date.
+    const stored = await getPending(redis, "PID");
+    expect(stored?.resolved.clienteOptionId).toBe("57123824-86d1-4fb8-a3a3-03fb1a8d8704");
+    expect(stored?.resolved.dueDateMs).toBe(Date.UTC(2026, 5, 25, 4, 0, 0));
+
+    // Preview re-rendered with the new values (Children Chic name shows).
+    expect(slack.chat.update).toHaveBeenCalledTimes(1);
+    const upd = slack.chat.update.mock.calls[0]![0];
+    expect(upd.ts).toBe("1700000000.000100");
+    expect(JSON.stringify(upd.blocks)).toContain("Children Chic");
+  });
+
+  it("is a no-op when the pending expired between open and submit", async () => {
+    const redis = memRedis();
+    const slack = fakeSlack();
+    const deps: InteractionDeps = { redis, clickup: fakeClickup(), slack, timezone: "America/Caracas" };
+    await handleEditSubmit(deps, editView({ cliente: null }));
+    expect(slack.chat.update).not.toHaveBeenCalled();
   });
 });
 

@@ -1,15 +1,22 @@
 import {
   claimPending,
   deletePending,
+  getPending,
   putPending,
   mapTaskToThread,
   type RedisLike,
 } from "../store/redis.js";
 import {
+  buildPreviewBlocks,
   buildConfirmedBlocks,
   buildCanceledBlocks,
   type Block,
 } from "./blocks.js";
+import {
+  buildEditModal,
+  parseEditSubmission,
+  type EditModalView,
+} from "./modal.js";
 import type { ClickUpClient } from "../clickup/client.js";
 
 /**
@@ -30,6 +37,9 @@ export type SlackInteractionClient = {
       text: string;
       blocks?: Block[];
     }): Promise<unknown>;
+  };
+  views: {
+    open(args: { trigger_id: string; view: EditModalView }): Promise<unknown>;
   };
 };
 
@@ -119,5 +129,59 @@ export async function handleCancel(
     ts: ref.messageTs,
     text: "❌ Cancelado",
     blocks: buildCanceledBlocks(),
+  });
+}
+
+/**
+ * Editar (open): load the pending and open a prefilled modal within Slack's ~3s
+ * trigger window (CONFIRM-04). If the pending expired, no-op (the human re-sends
+ * the message — low impact within the 1h TTL).
+ */
+export async function handleEditOpen(
+  deps: InteractionDeps,
+  ref: ActionRef & { triggerId: string },
+): Promise<void> {
+  const pending = await getPending(deps.redis, ref.pendingId);
+  if (!pending) return; // expired — nothing to edit
+
+  await deps.slack.views.open({
+    trigger_id: ref.triggerId,
+    view: buildEditModal(pending.resolved, {
+      pendingId: ref.pendingId,
+      channel: ref.channel,
+      messageTs: ref.messageTs,
+      timezone: deps.timezone,
+    }),
+  });
+}
+
+/**
+ * Editar (submit): merge the parsed patch over the stored ResolvedTask, persist
+ * the corrected pending, and re-render the threaded preview so it reflects the
+ * fixes (still showing Confirmar/Editar/Cancelar). No-op if the pending expired
+ * between open and submit.
+ */
+export async function handleEditSubmit(
+  deps: InteractionDeps,
+  view: Parameters<typeof parseEditSubmission>[0],
+): Promise<void> {
+  const { meta, patch } = parseEditSubmission(view, { timezone: deps.timezone });
+
+  const pending = await getPending(deps.redis, meta.pendingId);
+  if (!pending) return; // expired between open and submit
+
+  const updatedResolved = { ...pending.resolved, ...patch };
+  await putPending(deps.redis, meta.pendingId, {
+    ...pending,
+    resolved: updatedResolved,
+  });
+
+  await deps.slack.chat.update({
+    channel: meta.channel,
+    ts: meta.messageTs,
+    text: "🆕 Nueva tarea — revisá el preview",
+    blocks: buildPreviewBlocks(meta.pendingId, updatedResolved, {
+      timezone: deps.timezone,
+    }),
   });
 }
