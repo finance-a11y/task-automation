@@ -62,7 +62,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The pending task survives a cold start (persisted in Redis by pendingId) and Cancel discards it and disables the buttons
   4. Confirming creates a task in the Task-Seo Team list with title, description, assignees, epoch-ms dates, Cliente option UUID, and Link/Loom when present
   5. The created task's link is posted back to the original thread and the task↔thread mapping is stored for reverse notifications
-**Plans**: TBD
+**Plans**: 4 plans
+  - [ ] 03-01-PLAN.md — Env + injectable ClickUp REST client (createTask: dates ms, assignees, custom_fields by UUID, Link/Loom), unit-tested
+  - [ ] 03-02-PLAN.md — Redis pending + task↔thread helpers (GETDEL idempotent claim) + Spanish Block Kit preview builder
+  - [ ] 03-03-PLAN.md — Flow A core: parse→preview replaces placeholder + Confirmar (idempotent create+link+map) + Cancelar + /api/slack/interactions
+  - [ ] 03-04-PLAN.md — Editar modal: open prefilled selects/date pickers + submit re-renders corrected preview
 
 ### Phase 4: Reverse Notifications (Flow B)
 **Goal**: An independent ClickUp → Slack path: a webhook endpoint verifies ClickUp's X-Signature over the raw body, listens for status and assignee changes, and posts the relevant ones into the originating thread using the stored task↔thread map.
@@ -95,6 +99,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Serverless Foundation | 3/3 | Complete (offline; live deploy pending) | 2026-06-18 |
 | 2. NL Parser + Resolver | 0/3 | Not started | - |
-| 3. Confirm + Create (Flow A) | 0/TBD | Not started | - |
+| 3. Confirm + Create (Flow A) | 0/4 | Not started | - |
 | 4. Reverse Notifications (Flow B) | 0/TBD | Not started | - |
 | 5. Hardening | 0/TBD | Not started | - |
