@@ -12,6 +12,8 @@ const testEnv: Env = {
   UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
   UPSTASH_REDIS_REST_TOKEN: "token-abc",
   TEAM_TIMEZONE: "America/Caracas",
+  OPENAI_API_KEY: "sk-test",
+  OPENAI_MODEL: "gpt-4o-mini",
 };
 
 function sign(body: string, timestamp: number, secret = SIGNING_SECRET): string {
