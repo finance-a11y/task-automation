@@ -12,7 +12,11 @@ const EnvSchema = z.object({
   SLACK_BOT_TOKEN: nonEmpty,
   SLACK_SIGNING_SECRET: nonEmpty,
   SLACK_TASK_CHANNEL_ID: nonEmpty,
-  UPSTASH_REDIS_REST_URL: z.string().trim().url(),
+  UPSTASH_REDIS_REST_URL: z
+    .string()
+    .trim()
+    .url()
+    .startsWith("https://", "must be the https REST URL (not a rediss:// connection string)"),
   UPSTASH_REDIS_REST_TOKEN: nonEmpty,
   TEAM_TIMEZONE: nonEmpty.default("America/Caracas"),
   // OpenAI structured-outputs parser (Phase 2). API key is required so a
@@ -36,6 +40,44 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
+/** First value that is a non-empty https:// URL (skips rediss:// etc). */
+function firstHttpsUrl(...vals: Array<string | undefined>): string | undefined {
+  for (const v of vals) {
+    if (typeof v === "string" && /^https:\/\//i.test(v.trim())) return v.trim();
+  }
+  return undefined;
+}
+
+/** First non-empty trimmed value. */
+function firstNonEmpty(...vals: Array<string | undefined>): string | undefined {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the Upstash Redis REST URL/token from whichever env names exist.
+ * Upstash's Vercel integration auto-injects `KV_REST_API_URL`/`KV_REST_API_TOKEN`;
+ * we also accept the canonical `UPSTASH_REDIS_REST_*` names. The URL is chosen as
+ * the first https:// value across both, so a stray `rediss://` (the connection
+ * string, which the REST client cannot use → "fetch failed") is ignored.
+ */
+function normalizeRedis(
+  source: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const url = firstHttpsUrl(source.UPSTASH_REDIS_REST_URL, source.KV_REST_API_URL);
+  const token = firstNonEmpty(
+    source.UPSTASH_REDIS_REST_TOKEN,
+    source.KV_REST_API_TOKEN,
+  );
+  return {
+    ...source,
+    ...(url ? { UPSTASH_REDIS_REST_URL: url } : {}),
+    ...(token ? { UPSTASH_REDIS_REST_TOKEN: token } : {}),
+  };
+}
+
 /**
  * Validate and return a typed Env. Throws an Error naming every offending key
  * if validation fails. Empty-string required vars are treated as missing.
@@ -43,7 +85,7 @@ export type Env = z.infer<typeof EnvSchema>;
  * @param source map of env values (defaults to process.env)
  */
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
-  const result = EnvSchema.safeParse(source);
+  const result = EnvSchema.safeParse(normalizeRedis(source));
   if (!result.success) {
     const issues = result.error.issues
       .map((issue) => {
