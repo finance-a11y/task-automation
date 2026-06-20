@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Dynamic Config + Security Hardening
-status: roadmapped
-last_updated: "2026-06-20T00:26:10.978Z"
-last_activity: 2026-06-20
+status: in-progress
+last_updated: "2026-06-19T00:00:00.000Z"
+last_activity: 2026-06-19
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-18)
 
 **Core value:** Convertir un mensaje libre en Slack en una tarea de ClickUp correcta y completa (cliente + asignado + fechas) sin llenar formularios a mano.
-**Current focus:** v1.0 shipped (Phases 1-5). v1.1 roadmapped into 3 phases — next up Phase 6 (Dynamic Config from ClickUp).
+**Current focus:** v1.0 shipped (Phases 1-5). v1.1 in progress — Phase 6 (Dynamic Config from ClickUp) complete; next up Phase 7 (Security Hardening).
 
 ## Current Position
 
-Phase: 6 — Dynamic Config from ClickUp (not started)
-Plan: —
-Status: Roadmapped — ready to plan Phase 6
-Last activity: 2026-06-20 — v1.1 roadmap created (Phases 6-8)
+Phase: 6 — Dynamic Config from ClickUp (COMPLETE — all 3 plans executed)
+Plan: 06-03 done
+Status: Phase 6 complete — DYN-01..06 all done; 287 tests green, tsc clean
+Last activity: 2026-06-19 — Phase 6 executed (06-01/02/03), dynamic config live-with-fallback
 
 ## Performance Metrics
 
@@ -45,11 +45,12 @@ Last activity: 2026-06-20 — v1.1 roadmap created (Phases 6-8)
 | 2. NL Parser + Resolver | 3 | ~34 min | ~11 min |
 | 3. Confirm + Create | 4 | ~52 min | ~13 min |
 | 4. Reverse Notifications | 3 | ~30 min | ~10 min |
+| 6. Dynamic Config from ClickUp | 3 | ~60 min | ~20 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 03-02, 03-03, 03-04, 04-01, 04-02, 04-03 (all green offline)
-- Trend: steady; deviations were typed-fixture/mock backfills after env + ClickUpClient interface changes
+- Last 5 plans: 04-02, 04-03, 06-01, 06-02, 06-03 (all green offline)
+- Trend: steady; Phase 6 surgical — additive interfaces + backward-compatible resolver injection, no regressions (235 → 287 tests)
 
 *Updated after each plan completion*
 
@@ -96,9 +97,11 @@ Items acknowledged and carried forward from previous milestone close:
 | Live verification | Phase 2 live OpenAI accuracy: real parse round-trip + prompt/accuracy tuning (parse.live.test gated on OPENAI_API_KEY) | Pending (no live OpenAI key in this env) | 2026-06-18 |
 | Live verification | Phase 3 live Flow A: real Slack interactivity (Confirmar/Editar/Cancelar) + real ClickUp task creation in the Task-Seo Team list, link-back, and task↔thread map — needs a deployed app + CLICKUP_API_TOKEN | Pending (no live Slack/ClickUp/Redis in this env) | 2026-06-18 |
 | Live verification | Phase 4 live Flow B: run scripts/register-clickup-webhook.mjs post-deploy, store CLICKUP_WEBHOOK_SECRET, trigger a real status/assignee change on a bot-created task → Spanish notification lands in the originating thread; confirm the live X-Signature format matches the verifier | Pending (no live ClickUp/Slack/Redis in this env) | 2026-06-18 |
+| Live setup | Phase 6 DYN-04: add the `users:read.email` Slack bot scope + reinstall the app; without it assignee resolution degrades to name/alias + static SLACK_TO_MEMBER | Pending (no live Slack in this env) | 2026-06-19 |
+| Live verification | Phase 6 dynamic config: real ClickUp field/member fetch + GET /api/admin/refresh-config against live Redis; confirm an added client/member appears in a new preview after refresh/TTL | Pending (no live ClickUp/Redis in this env) | 2026-06-19 |
 
 ## Session Continuity
 
-Last session: 2026-06-18
-Stopped at: Phase 4 executed (04-01/02/03) — 182/183 tests green (1 live OpenAI test skipped), tsc clean; live ClickUp webhook registration + real status/assignee change deferred
-Resume file: .planning/phases/04-reverse-notifications/04-03-SUMMARY.md (Flow B ingress + registration complete)
+Last session: 2026-06-19
+Stopped at: Phase 6 executed (06-01/02/03) — 287/289 tests green (2 live tests skipped), tsc clean; dynamic config live-with-fallback. Live Slack users:read.email scope + real ClickUp/Redis fetch deferred
+Resume file: .planning/phases/06-dynamic-config-from-clickup/06-03-SUMMARY.md (provider + email resolver + refresh endpoint wired)
