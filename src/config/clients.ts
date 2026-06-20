@@ -47,4 +47,10 @@ export const CLIENT_ALIASES = {
   apturio: "Apturio",
   interno: "Interno",
   internal: "Interno",
+  // Aprendoseo / Aprendo Club is the team's own brand, not a client → Interno.
+  aprendoseo: "Interno",
+  "aprendo seo": "Interno",
+  aprendoclub: "Interno",
+  "aprendo club": "Interno",
+  aprendo: "Interno",
 } as const satisfies Record<string, ClientName>;
