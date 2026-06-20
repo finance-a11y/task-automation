@@ -190,6 +190,16 @@ describe("createClickUpClient.getTask", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["86aj39bm7", "abc-123", "abc_123"])(
+    "accepts a real ClickUp id %j (standard + custom-id with hyphen/underscore) (WR-02)",
+    async (goodId) => {
+      const fetch = okGet({ id: goodId, name: "ok" });
+      const client = createClickUpClient({ token: TOKEN, listId: LIST_ID, fetch: fetch as unknown as FetchLike });
+      await client.getTask(goodId);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each(["../../team/9013/member", "", "has space", "id/slash"])(
     "rejects a malformed taskId %j BEFORE any fetch (FIND-11)",
     async (badId) => {

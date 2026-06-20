@@ -164,7 +164,7 @@ remote compromise of the core task flow.
 | **FIND-08** | Kill switch is **fail-open** on Redis outage | **Low (accepted)** | A04 | `src/store/redis.ts:151-158` | Intentional (availability). Record as accepted risk; optionally add monitoring on Redis-down. |
 | **FIND-09** | Content-hash dedup key truncated to 64-bit | **Low** | A08 | `src/clickup/webhook.ts:208-212` | Widen to 32 hex chars (128-bit) — cheap defense-in-depth. |
 | **FIND-10** | No alerting/audit trail for ops actions | **Low** | A09 | ops endpoints | Log (without secrets) who/what for each ops invocation; wire a basic alert on repeated 401s. |
-| **FIND-11** | `taskId` path segment not format-validated before ClickUp `GET` | **Low** | A10 | `src/clickup/client.ts:151-152` | Validate `taskId` against `^[A-Za-z0-9]+$` before interpolating into the URL path. |
+| **FIND-11** | `taskId` path segment not format-validated before ClickUp `GET` | **Low** | A10 | `src/clickup/client.ts:151-152` | Validate `taskId` against `^[A-Za-z0-9_-]+$` before interpolating into the URL path (hyphen/underscore allowed for ClickUp custom ids). |
 | **FIND-12** | No explicit security response headers | **Info/DiD** | A05 | all `api/*` | Optional for JSON-only APIs; add `X-Content-Type-Options: nosniff` if cheap. |
 | **FIND-13** | Verify `.env*`/secrets are git-ignored and never committed | **Info/DiD** | A02 | repo hygiene | Confirm `.gitignore` covers `.env.local`; rotate any secret ever exposed in a URL/log. |
 
@@ -196,7 +196,7 @@ acceptance.
 | **FIND-08** | **ACCEPTED** | Kill-switch fail-open is an intentional availability-over-safety decision (HARD-03). |
 | **FIND-09** | **ACCEPTED / noted** | The 64-bit content-hash dedup key collision risk is negligible at this volume; left as-is. |
 | **FIND-10** | **ACCEPTED for v1.1** | Ops audit-trail / alerting deferred. |
-| **FIND-11** | **FIXED** | `getTask` validates `taskId` against `^[A-Za-z0-9]+$` before any fetch, so a malformed segment never reaches the ClickUp URL path. `src/clickup/client.ts`. |
+| **FIND-11** | **FIXED** | `getTask` validates `taskId` against `^[A-Za-z0-9_-]+$` before any fetch (hyphen/underscore allowed for ClickUp custom ids; slashes/dots/spaces still rejected), so a malformed segment never reaches the ClickUp URL path. `src/clickup/client.ts`. |
 | **FIND-12 / FIND-13** | **NOTED** | Optional security headers (JSON-only API) and repo hygiene confirmed — `.gitignore` covers `.env*`; no secret was committed. No code change required. |
 
 ### SEC-06 re-confirmation (no secret leak)
