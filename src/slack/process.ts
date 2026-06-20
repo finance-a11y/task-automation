@@ -14,6 +14,8 @@ import {
   PARSE_ERROR_MESSAGE,
   GENERIC_ERROR_MESSAGE,
 } from "./report.js";
+import { extractSlackMentionIds } from "./slackEmail.js";
+import type { ConfigProvider } from "../config/provider.js";
 import type { Env } from "../config/env.js";
 
 /**
@@ -41,6 +43,18 @@ export type ProcessDeps = {
   env: Pick<Env, "SLACK_TASK_CHANNEL_ID" | "TEAM_TIMEZONE">;
   /** Deps for parseAndResolve (OpenAI client + model + timezone + slack map). */
   parseDeps: ParseAndResolveDeps;
+  /**
+   * Dynamic config provider (plan 02/03). When present, the capture path awaits
+   * live clientes/members config and injects them into the parse. When absent
+   * the path resolves with the static maps via parseDeps (backward-compatible).
+   */
+  provider?: ConfigProvider;
+  /**
+   * Resolve a list of @-mentioned Slack user ids to a Slack→member id map by
+   * email (plan 03). When absent the path uses the static map already threaded
+   * through parseDeps.slackToMember.
+   */
+  resolveSlackToMember?: (ids: string[]) => Promise<Record<string, number>>;
   /** Short random id generator for the pending key (app.ts → crypto.randomUUID). */
   genPendingId: () => string;
   /** Injectable clock for deterministic relative-date resolution. */
@@ -142,11 +156,51 @@ export async function processMessageEvent(
 
     const threadTs = message.thread_ts ?? messageTs;
 
+    // DYN-01..05: resolve live config + the email-based slack map BEFORE parsing,
+    // and merge them into the per-call parse deps. Each step is wrapped so a
+    // ClickUp/Redis/Slack failure degrades to the static fallback (the provider
+    // already degrades internally; an empty slack map means name/alias + the
+    // static overlay still resolve). The parse/preview flow is never blocked.
+    let liveParseDeps: ParseAndResolveDeps = deps.parseDeps;
+    if (deps.provider) {
+      try {
+        const [clientesConfig, membersConfig] = await Promise.all([
+          deps.provider.getClientes(),
+          deps.provider.getMembers(),
+        ]);
+        liveParseDeps = { ...liveParseDeps, clientesConfig, membersConfig };
+      } catch (cfgErr) {
+        console.error(
+          "[slack] live config fetch failed — using static fallback:",
+          cfgErr instanceof Error ? cfgErr.message : String(cfgErr),
+        );
+      }
+    }
+    if (deps.resolveSlackToMember) {
+      try {
+        const mentionIds = extractSlackMentionIds(text);
+        if (mentionIds.length > 0) {
+          const slackToMember = await deps.resolveSlackToMember(mentionIds);
+          // Merge on top of any static map already in parseDeps so an
+          // email-resolved id wins but unresolved ids keep the static overlay.
+          liveParseDeps = {
+            ...liveParseDeps,
+            slackToMember: { ...liveParseDeps.slackToMember, ...slackToMember },
+          };
+        }
+      } catch (slackErr) {
+        console.error(
+          "[slack] email-based slack→member resolution failed — using static map:",
+          slackErr instanceof Error ? slackErr.message : String(slackErr),
+        );
+      }
+    }
+
     // Parse+resolve. A failure here must NOT clear the dedup key.
     let resolved;
     try {
       const now = deps.now ? deps.now() : Date.now();
-      resolved = await parseAndResolve(text, now, deps.parseDeps);
+      resolved = await parseAndResolve(text, now, liveParseDeps);
     } catch (parseErr) {
       console.error(
         "[slack] parseAndResolve failed (dedup key kept):",

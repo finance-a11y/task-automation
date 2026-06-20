@@ -297,4 +297,76 @@ describe("processMessageEvent", () => {
       (d.client as ReturnType<typeof fakeClient>).chat.postMessage,
     ).toHaveBeenCalledTimes(1);
   });
+
+  it("DYN-01/03/04: a live provider + email resolver surface in the preview", async () => {
+    // A parse that names a NEW client + a mentioned teammate; the live provider
+    // supplies the new client uuid, and the email resolver maps the mention.
+    const liveParse: ParsedTask = {
+      title: "Tarea live",
+      description: null,
+      clienteRaw: "Nuevo Cliente SA",
+      assigneesRaw: ["<@U777>"],
+      startDatePhrase: null,
+      dueDatePhrase: null,
+      links: [],
+    };
+    const provider = {
+      getClientes: vi.fn(async () => ({
+        byName: { "nuevo cliente sa": "live-uuid-new" },
+        aliases: {},
+      })),
+      getMembers: vi.fn(async () => ({ byName: {}, aliases: {}, byEmail: {} })),
+    };
+    const resolveSlackToMember = vi.fn(async () => ({ U777: 424242 }));
+    const client = fakeClient();
+    const d = deps({
+      client,
+      parseDeps: {
+        client: fakeParseClient(liveParse),
+        model: "gpt-4o-mini",
+        timezone: "America/Caracas",
+      },
+      provider,
+      resolveSlackToMember,
+    });
+
+    await processMessageEvent(d, {
+      eventId: "Elive",
+      message: { ...goodMessage, text: "tarea para Nuevo Cliente SA con <@U777>" },
+    });
+
+    expect(provider.getClientes).toHaveBeenCalledTimes(1);
+    expect(resolveSlackToMember).toHaveBeenCalledWith(["U777"]);
+    const arg = client.chat.postMessage.mock.calls[0]![0];
+    const blocks = JSON.stringify(arg.blocks);
+    // The resolved task carried the live client uuid + the email-resolved id.
+    const redis = d.redis as ReturnType<typeof memRedis>;
+    const pendingWrite = redis.set.mock.calls.find((c) =>
+      String(c[0]).startsWith("pending:"),
+    );
+    const stored = JSON.parse(String(pendingWrite![1]));
+    expect(stored.resolved.clienteOptionId).toBe("live-uuid-new");
+    expect(stored.resolved.assigneeIds).toEqual([424242]);
+    expect(blocks).toBeTruthy();
+  });
+
+  it("DYN-05: a provider failure still parses with the static fallback (flow never breaks)", async () => {
+    const provider = {
+      getClientes: vi.fn(async () => {
+        throw new Error("ClickUp + Redis both down");
+      }),
+      getMembers: vi.fn(async () => {
+        throw new Error("down");
+      }),
+    };
+    const client = fakeClient();
+    const d = deps({ client, provider });
+
+    await processMessageEvent(d, { eventId: "Edyn5", message: goodMessage });
+
+    // The preview still posts (static maps resolved "feli" → Felipe Vergara).
+    expect(client.chat.postMessage).toHaveBeenCalledTimes(1);
+    const arg = client.chat.postMessage.mock.calls[0]![0];
+    expect(JSON.stringify(arg.blocks)).toContain("Felipe Vergara");
+  });
 });
