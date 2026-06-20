@@ -148,12 +148,20 @@ export function staticMembersConfig(): MembersConfig {
  * Generic 3-tier resolution shared by both getters. Reads the hot cache; on a
  * miss fetches live and populates cache + last-good; on a fetch failure serves
  * last-good then the static fallback. Never throws — every tier is wrapped.
+ *
+ * An EMPTY live result (`isEmpty(live) === true`) is treated exactly like a
+ * thrown fetch error (DYN-05): a 200 with an empty option/member list (transient
+ * emptiness, a permissions blip, a momentarily-empty workspace) must NOT poison
+ * the hot cache or overwrite the no-TTL last-good with empty config — doing so
+ * would disable the resilient fallback for the whole TTL window. Instead we fall
+ * through to last-good → static maps so the resolver always has data.
  */
 async function resolveTiered<T>(
   name: string,
   redis: RedisLike,
   fetchLive: () => Promise<T>,
   staticFallback: () => T,
+  isEmpty: (value: T) => boolean,
 ): Promise<T> {
   // Tier 1: hot cache.
   try {
@@ -169,15 +177,23 @@ async function resolveTiered<T>(
   // Tier 2: live ClickUp fetch → populate cache + last-good.
   try {
     const live = await fetchLive();
-    try {
-      await writeConfigCache(redis, name, live);
-    } catch (writeErr) {
+    if (isEmpty(live)) {
+      // An empty 200 is NOT a valid dataset — do not cache it and do not
+      // overwrite last-good. Fall through to the last-good/static tiers.
       console.error(
-        `[config] writeConfigCache(${name}) failed (serving live anyway):`,
-        writeErr instanceof Error ? writeErr.message : String(writeErr),
+        `[config] live fetch for ${name} returned EMPTY — treating as a fetch failure, falling back to last-good/static (DYN-05)`,
       );
+    } else {
+      try {
+        await writeConfigCache(redis, name, live);
+      } catch (writeErr) {
+        console.error(
+          `[config] writeConfigCache(${name}) failed (serving live anyway):`,
+          writeErr instanceof Error ? writeErr.message : String(writeErr),
+        );
+      }
+      return live;
     }
-    return live;
   } catch (fetchErr) {
     console.error(
       `[config] live fetch for ${name} failed — falling back to last-good/static:`,
@@ -221,6 +237,9 @@ export function createConfigProvider(deps: {
         redis,
         async () => buildClientesConfig(await clickup.getClienteOptions()),
         staticClientesConfig,
+        // A live fetch that yields no named clientes (empty byName) is empty —
+        // aliases alone (resolved from static) are not a usable live dataset.
+        (cfg) => Object.keys(cfg.byName).length === 0,
       );
     },
     getMembers() {
@@ -229,6 +248,8 @@ export function createConfigProvider(deps: {
         redis,
         async () => buildMembersConfig(await clickup.getMembers()),
         staticMembersConfig,
+        // A live fetch that yields no named members (empty byName) is empty.
+        (cfg) => Object.keys(cfg.byName).length === 0,
       );
     },
   };

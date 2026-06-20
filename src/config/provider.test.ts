@@ -185,6 +185,51 @@ describe("createConfigProvider.getClientes — 3-tier resolution", () => {
     expect(cfg.byName["nuevo cliente sa"]).toBe("live-newclient");
   });
 
+  it("EMPTY live fetch is treated as a failure: serves static, does NOT poison cache/last-good", async () => {
+    const redis = memRedis();
+    const getClienteOptions = vi.fn(async () => [] as ClienteOption[]);
+    const provider = createConfigProvider({
+      clickup: { getClienteOptions, getMembers: vi.fn() },
+      redis,
+    });
+    const cfg = await provider.getClientes();
+    expect(getClienteOptions).toHaveBeenCalledTimes(1);
+    // Falls through to the static maps (resilient-fallback guarantee, DYN-05).
+    expect(cfg.byName["felipe vergara"]).toBe(FELIPE);
+    expect(cfg.aliases["feli"]).toBe(FELIPE);
+    // Empty config must NOT be written to either the hot cache or last-good.
+    expect(await redis.get("cfg:clientes")).toBeNull();
+    expect(await redis.get("cfg:clientes:lastgood")).toBeNull();
+  });
+
+  it("EMPTY live fetch does NOT overwrite an existing non-empty last-good", async () => {
+    const redis = memRedis();
+    const lastGood = { byName: { lg: "uuid-lg" }, aliases: {} };
+    await redis.set("cfg:clientes:lastgood", JSON.stringify(lastGood));
+    const getClienteOptions = vi.fn(async () => [] as ClienteOption[]);
+    const provider = createConfigProvider({
+      clickup: { getClienteOptions, getMembers: vi.fn() },
+      redis,
+    });
+    // Empty fetch → falls through to the preserved last-good, not static.
+    expect(await provider.getClientes()).toEqual(lastGood);
+    // last-good is untouched; hot cache is not populated with empty.
+    expect(await redis.get("cfg:clientes:lastgood")).toBe(JSON.stringify(lastGood));
+    expect(await redis.get("cfg:clientes")).toBeNull();
+  });
+
+  it("non-empty live fetch still caches + updates last-good (regression)", async () => {
+    const redis = memRedis();
+    const provider = createConfigProvider({
+      clickup: { getClienteOptions: vi.fn(async () => liveOptions), getMembers: vi.fn() },
+      redis,
+    });
+    const cfg = await provider.getClientes();
+    expect(cfg.byName["nuevo cliente sa"]).toBe("live-newclient");
+    expect(await redis.get("cfg:clientes")).toBeTruthy();
+    expect(await redis.get("cfg:clientes:lastgood")).toBeTruthy();
+  });
+
   it("curated aliases (feli/aprendoseo) still resolve after a live fetch", async () => {
     const redis = memRedis();
     const provider = createConfigProvider({
@@ -208,6 +253,20 @@ describe("createConfigProvider.getMembers — 3-tier resolution", () => {
     const cfg = await provider.getMembers();
     expect(getMembers).toHaveBeenCalledTimes(1);
     expect(cfg.byEmail["vero@arianna.com"]).toBe(111);
+  });
+
+  it("EMPTY live fetch → static maps, does NOT poison cache/last-good", async () => {
+    const redis = memRedis();
+    const getMembers = vi.fn(async () => [] as ClickUpMember[]);
+    const provider = createConfigProvider({
+      clickup: { getClienteOptions: vi.fn(), getMembers },
+      redis,
+    });
+    const cfg = await provider.getMembers();
+    expect(getMembers).toHaveBeenCalledTimes(1);
+    expect(cfg.byName["veronica romero"]).toBe(MEMBERS["Veronica Romero"]);
+    expect(await redis.get("cfg:members")).toBeNull();
+    expect(await redis.get("cfg:members:lastgood")).toBeNull();
   });
 
   it("fetch FAILURE → static maps with byEmail empty", async () => {
