@@ -70,7 +70,9 @@ export const POST = async (req: Request): Promise<Response> => {
 
   // 2. Case-insensitive X-Signature lookup + raw-body verify (NOTIFY-01).
   const sig = getClickUpSignatureHeader(req.headers);
+  console.log("[clickup-webhook] ingress POST", { hasSignature: Boolean(sig), bodyLen: raw.length });
   if (!sig || !verifyClickUpSignature(raw, sig, env.CLICKUP_WEBHOOK_SECRET)) {
+    console.warn("[clickup-webhook] REJECTED 401 — signature missing/mismatch (check CLICKUP_WEBHOOK_SECRET)");
     return new Response("invalid signature", { status: 401 });
   }
 

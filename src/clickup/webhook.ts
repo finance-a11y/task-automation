@@ -238,8 +238,17 @@ async function runWebhook(
 ): Promise<void> {
   const { redis, slack } = deps;
 
+  console.log("[clickup-webhook] received", {
+    event: payload.event,
+    task_id: payload.task_id,
+    items: Array.isArray(payload.history_items) ? payload.history_items.length : 0,
+  });
+
   // 1. Only the two subscribed events.
-  if (!HANDLED_EVENTS.has(payload.event)) return;
+  if (!HANDLED_EVENTS.has(payload.event)) {
+    console.log("[clickup-webhook] dropped: event not handled", { event: payload.event });
+    return;
+  }
   const taskId = payload.task_id;
   if (typeof taskId !== "string" || taskId.length === 0) return;
 
@@ -252,17 +261,26 @@ async function runWebhook(
   let assignee: AssigneeTransition = null;
   if (payload.event === "taskStatusUpdated") {
     status = extractStatusTransition(items);
-    if (!status) return;
+    if (!status) {
+      console.log("[clickup-webhook] dropped: no meaningful status transition", { taskId });
+      return;
+    }
     kind = "status";
   } else {
     assignee = extractAssigneeTransition(items);
-    if (!assignee) return;
+    if (!assignee) {
+      console.log("[clickup-webhook] dropped: no assignee add/remove", { taskId });
+      return;
+    }
     kind = "assignee";
   }
 
   // 3. Scope to bot-created tasks only — unknown task_id is a silent drop.
   const ref = await getThreadForTask(redis, taskId);
-  if (!ref) return;
+  if (!ref) {
+    console.log("[clickup-webhook] dropped: task not in task2thread map (not bot-created or map expired)", { taskId });
+    return;
+  }
 
   // 4. Redelivery dedup on (event + task_id + first history-item id), with a
   //    content-hash fallback when no item id is present (WR-02).
@@ -275,7 +293,16 @@ async function runWebhook(
   //    X-Signature HMAC gate at ingress already rejects forged/tampered bodies.
   const deliveryKey = buildDeliveryKey(payload.event, taskId, items);
   const first = await markWebhookDeliveryOnce(redis, deliveryKey);
-  if (!first) return;
+  if (!first) {
+    console.log("[clickup-webhook] dropped: duplicate delivery", { taskId, deliveryKey });
+    return;
+  }
+  console.log("[clickup-webhook] mapped + accepted, posting to thread", {
+    taskId,
+    kind,
+    channel: ref.channel,
+    thread_ts: ref.thread_ts,
+  });
 
   // 5. Resolve the task name (payload first, then the injected fallback).
   let name = payloadTaskName(payload);
