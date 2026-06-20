@@ -20,8 +20,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 _Milestone v1.1 — Dynamic Config + Security Hardening:_
 - [x] **Phase 6: Dynamic Config from ClickUp** - Live Cliente options, members, and email-resolved Slack→ClickUp map, Redis-cached with TTL and resilient fallback (no redeploy to add a client/member)
-- [ ] **Phase 7: Security Audit** - OWASP Top 10 (2021) + cybersecurity review of the whole app, severity-classified, written up as SECURITY.md with a prioritized remediation plan
-- [ ] **Phase 8: Security Hardening** - Implement the audit fixes: gate/remove /api/slack/diag, fix critical/high findings, scrub secrets from logs/responses, patch vulnerable deps
+- [x] **Phase 7: Security Audit** - OWASP Top 10 (2021) + cybersecurity review of the whole app, severity-classified, written up as SECURITY.md with a prioritized remediation plan
+- [x] **Phase 8: Security Hardening** - Implement the audit fixes: gate/remove /api/slack/diag, fix critical/high findings, scrub secrets from logs/responses, patch vulnerable deps
 
 ## Phase Details
 
@@ -138,7 +138,9 @@ _Milestone v1.1 — Dynamic Config + Security Hardening:_
   2. Every critical and high finding from `SECURITY.md` is fixed and re-verified, and `SECURITY.md` reflects the closed status
   3. No secret or token appears in application logs, HTTP responses, or error bodies (verified against the audit's secrets-exposure checks)
   4. Known critical/high dependency vulnerabilities are patched (or explicitly documented as accepted), and the dependency scan re-runs clean
-**Plans**: TBD
+**Plans**: 2 plans
+  - [ ] 08-01-PLAN.md — Ops-endpoint hardening: optional OPS_API_TOKEN + Bearer gate (404-when-unset) + POST mutations + diag self-join restricted to configured channel + reduced disclosure + README/DEPLOY docs (SEC-04, SEC-05/FIND-01/02, SEC-06/FIND-03)
+  - [ ] 08-02-PLAN.md — Input-safety + audit close: preview mrkdwn escape (FIND-07) + getTask taskId validation (FIND-11) + webhook replay residual note (FIND-04) + SECURITY.md status close + dep-audit posture (SEC-05, SEC-06, SEC-07/FIND-05)
 
 ## Progress
 
@@ -154,5 +156,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Hardening | 2/2 | Complete (offline; live 429/5xx backoff timing pending) | 2026-06-18 |
 | 6. Dynamic Config from ClickUp | 3/3 | Complete (offline; live Slack scope + ClickUp/Redis fetch pending) | 2026-06-19 |
 | 7. Security Audit | 0/? | Not started | - |
-| 8. Security Hardening | 0/? | Not started | - |
+| 8. Security Hardening | 2/2 | Complete | 311 tests green, tsc clean |
 </content>

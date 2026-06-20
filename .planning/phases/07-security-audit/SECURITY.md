@@ -164,7 +164,7 @@ remote compromise of the core task flow.
 | **FIND-08** | Kill switch is **fail-open** on Redis outage | **Low (accepted)** | A04 | `src/store/redis.ts:151-158` | Intentional (availability). Record as accepted risk; optionally add monitoring on Redis-down. |
 | **FIND-09** | Content-hash dedup key truncated to 64-bit | **Low** | A08 | `src/clickup/webhook.ts:208-212` | Widen to 32 hex chars (128-bit) — cheap defense-in-depth. |
 | **FIND-10** | No alerting/audit trail for ops actions | **Low** | A09 | ops endpoints | Log (without secrets) who/what for each ops invocation; wire a basic alert on repeated 401s. |
-| **FIND-11** | `taskId` path segment not format-validated before ClickUp `GET` | **Low** | A10 | `src/clickup/client.ts:151-152` | Validate `taskId` against `^[A-Za-z0-9]+$` before interpolating into the URL path. |
+| **FIND-11** | `taskId` path segment not format-validated before ClickUp `GET` | **Low** | A10 | `src/clickup/client.ts:151-152` | Validate `taskId` against `^[A-Za-z0-9_-]+$` before interpolating into the URL path (hyphen/underscore allowed for ClickUp custom ids). |
 | **FIND-12** | No explicit security response headers | **Info/DiD** | A05 | all `api/*` | Optional for JSON-only APIs; add `X-Content-Type-Options: nosniff` if cheap. |
 | **FIND-13** | Verify `.env*`/secrets are git-ignored and never committed | **Info/DiD** | A02 | repo hygiene | Confirm `.gitignore` covers `.env.local`; rotate any secret ever exposed in a URL/log. |
 
@@ -178,4 +178,44 @@ remote compromise of the core task flow.
 
 ---
 
-*Audit only — no source code was modified. Implementation fixes are Phase 8.*
+## Phase 8 Closure Status (2026-06-19)
+
+Phase 8 (Security Hardening, milestone v1.1) implemented the prioritized fixes
+below. Status per finding, with the file:line of the fix or the rationale for
+acceptance.
+
+| ID | Disposition | Where / Rationale |
+|----|-------------|-------------------|
+| **FIND-01** | **FIXED** | Dedicated `OPS_API_TOKEN` checked via `Authorization: Bearer` with a timing-safe compare; the Slack signing secret is no longer the ops gate. `src/ops/auth.ts` (`evaluateOpsAuth`), `api/slack/diag.ts`, `api/admin/refresh-config.ts`. The token is optional in the env schema (`src/config/env.ts`) so an unset value never trips fail-fast boot. |
+| **FIND-02** | **FIXED** | Mutations require POST: `refresh-config` is POST-only (GET → 405); `diag` self-join is POST-only. The self-join is hardwired to `SLACK_TASK_CHANNEL_ID` (the arbitrary `?join=` param was removed). Fail-closed: both endpoints return 404 when `OPS_API_TOKEN` is unset. `api/slack/diag.ts`, `api/admin/refresh-config.ts`. |
+| **FIND-03** | **FIXED** | `diag` returns counts/booleans only (`channelCount`, `taskChannelJoined`, `redisOk`, `redisUrlScheme`, bot identity) — no full channel list, no Redis host, no cache key names. `refresh-config` returns `{ clearedCount }`, not the cleared keys. `api/slack/diag.ts`, `api/admin/refresh-config.ts`. |
+| **FIND-04** | **ACCEPTED (documented)** | The ClickUp payload carries no signed timestamp, so a timestamp-window rejection is not possible without inventing a field. The 24h `whk:` dedup TTL is the accepted replay bound, and the X-Signature HMAC gate already rejects forged bodies. Documented in `src/clickup/webhook.ts` at the dedup step. |
+| **FIND-05** | **ACCEPTED** | `npm audit --omit=dev` is 0 runtime vulnerabilities; the 21 advisories are dev-only (`vercel` CLI, `vitest`/`vite`/`esbuild`) and never ship to the serverless runtime. A toolchain major bump is optional hygiene, not required for runtime safety. |
+| **FIND-06** | **ACCEPTED for v1.1** | Rate limiting deferred. The signature gates plus the Vercel platform are the practical limiter; an Upstash token-bucket is a future item. |
+| **FIND-07** | **FIXED** | The outbound preview now escapes Slack mrkdwn on every untrusted field (title, description, links, resolved cliente + assignee names) via the shared `escapeSlackText`. `src/slack/blocks.ts`, `src/util/slackMrkdwn.ts` (moved out of `src/clickup/webhook.ts`, which re-exports it). |
+| **FIND-08** | **ACCEPTED** | Kill-switch fail-open is an intentional availability-over-safety decision (HARD-03). |
+| **FIND-09** | **ACCEPTED / noted** | The 64-bit content-hash dedup key collision risk is negligible at this volume; left as-is. |
+| **FIND-10** | **ACCEPTED for v1.1** | Ops audit-trail / alerting deferred. |
+| **FIND-11** | **FIXED** | `getTask` validates `taskId` against `^[A-Za-z0-9_-]+$` before any fetch (hyphen/underscore allowed for ClickUp custom ids; slashes/dots/spaces still rejected), so a malformed segment never reaches the ClickUp URL path. `src/clickup/client.ts`. |
+| **FIND-12 / FIND-13** | **NOTED** | Optional security headers (JSON-only API) and repo hygiene confirmed — `.gitignore` covers `.env*`; no secret was committed. No code change required. |
+
+### SEC-06 re-confirmation (no secret leak)
+
+After the Phase 8 changes the ops responses and error bodies expose no
+token/secret/email: `diag`/`refresh-config` return only counts, booleans, bot
+identity, and a Redis URL scheme (never the host or token); the new
+`evaluateOpsAuth` never logs the token; `getTask`'s validation error carries no
+Authorization value (test-asserted). A grep for `token|secret|authorization`
+across the touched files in `console.*` calls stays clean.
+
+### SEC-07 dependency posture
+
+`npm audit --omit=dev` = **0 runtime vulnerabilities**. The 21 total advisories
+are dev-only (vercel CLI + vitest/vite/esbuild toolchain) and are accepted; they
+do not ship to runtime. Toolchain major bumps remain optional hygiene.
+
+---
+
+*Original audit was read-only. The Phase 8 fixes above were implemented surgically
+without touching the verified signature/idempotency/flow code; the full offline
+test suite stays green.*

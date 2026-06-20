@@ -5,10 +5,15 @@ import {
   type RedisLike,
 } from "../store/redis.js";
 import { MEMBERS } from "../config/members.js";
+import { escapeSlackText } from "../util/slackMrkdwn.js";
 import type {
   ClickUpHistoryItem,
   ClickUpWebhookPayload,
 } from "./types.js";
+
+// Re-exported for backward compatibility — escapeSlackText now lives in the
+// shared util so the outbound preview (src/slack/blocks.ts) can use it too.
+export { escapeSlackText } from "../util/slackMrkdwn.js";
 
 /**
  * Flow B core (Phase 4, NOTIFY-02/03): parse a ClickUp reverse-webhook payload,
@@ -67,20 +72,6 @@ export function parseWebhookPayload(
   const candidate = obj as Record<string, unknown>;
   if (typeof candidate.event !== "string") return null;
   return candidate as ClickUpWebhookPayload;
-}
-
-/**
- * Escape Slack mrkdwn control characters in UNTRUSTED text (ClickUp task names,
- * status labels, resolved/unresolved assignee text). Without this, a task named
- * `<!channel>`, `<@U123>`, or `<url|text>` would trigger pings or spoofed links
- * when posted. Order matters: `&` must be escaped first. Per Slack guidance only
- * `&`, `<`, `>` are special in message text.
- */
-export function escapeSlackText(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 /** PURE: the Spanish status-change message. */
@@ -275,6 +266,13 @@ async function runWebhook(
 
   // 4. Redelivery dedup on (event + task_id + first history-item id), with a
   //    content-hash fallback when no item id is present (WR-02).
+  //
+  //    FIND-04 (replay residual, ACCEPTED): the ClickUp webhook payload carries
+  //    no signed timestamp, so a timestamp-window rejection is impossible without
+  //    inventing a field — which we deliberately do NOT do. The 24h `whk:` dedup
+  //    TTL (markWebhookDeliveryOnce) is the accepted replay bound: a captured
+  //    delivery replayed inside that window is collapsed to a no-op, and the
+  //    X-Signature HMAC gate at ingress already rejects forged/tampered bodies.
   const deliveryKey = buildDeliveryKey(payload.event, taskId, items);
   const first = await markWebhookDeliveryOnce(redis, deliveryKey);
   if (!first) return;
