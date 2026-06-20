@@ -12,12 +12,12 @@
 
 ### Dynamic Configuration
 
-- [ ] **DYN-01**: El bot lee las opciones del custom field "Cliente" en vivo desde ClickUp (GET field) en lugar de la lista hardcodeada
-- [ ] **DYN-02**: Las opciones de Cliente se cachean en Redis con TTL (≈10 min); agregar o renombrar un cliente en ClickUp se refleja sin redeploy una vez expira el cache
-- [ ] **DYN-03**: El bot lee los miembros del workspace ClickUp en vivo (cacheados en Redis con TTL) para resolver asignados, sin los 9 IDs hardcodeados
-- [ ] **DYN-04**: El mapa Slack→ClickUp se resuelve por email (Slack `users.info` email ↔ email del miembro ClickUp), sin IDs de Slack hardcodeados
-- [ ] **DYN-05**: Fallback resiliente: si ClickUp o Redis fallan, el bot usa el último cache válido o los maps estáticos como respaldo, sin romper el flujo de parseo
-- [ ] **DYN-06**: Existe una forma de refrescar/invalidar el cache manualmente (endpoint o comando) tras agregar un cliente o miembro
+- [x] **DYN-01**: El bot lee las opciones del custom field "Cliente" en vivo desde ClickUp (GET field) en lugar de la lista hardcodeada
+- [x] **DYN-02**: Las opciones de Cliente se cachean en Redis con TTL (≈10 min); agregar o renombrar un cliente en ClickUp se refleja sin redeploy una vez expira el cache
+- [x] **DYN-03**: El bot lee los miembros del workspace ClickUp en vivo (cacheados en Redis con TTL) para resolver asignados, sin los 9 IDs hardcodeados
+- [x] **DYN-04**: El mapa Slack→ClickUp se resuelve por email (Slack `users.info` email ↔ email del miembro ClickUp), sin IDs de Slack hardcodeados
+- [x] **DYN-05**: Fallback resiliente: si ClickUp o Redis fallan, el bot usa el último cache válido o los maps estáticos como respaldo, sin romper el flujo de parseo
+- [x] **DYN-06**: Existe una forma de refrescar/invalidar el cache manualmente (endpoint o comando) tras agregar un cliente o miembro
 
 ### Security Audit
 
@@ -50,12 +50,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DYN-01 | Phase 6 | Pending |
-| DYN-02 | Phase 6 | Pending |
-| DYN-03 | Phase 6 | Pending |
-| DYN-04 | Phase 6 | Pending |
-| DYN-05 | Phase 6 | Pending |
-| DYN-06 | Phase 6 | Pending |
+| DYN-01 | Phase 6 | Done |
+| DYN-02 | Phase 6 | Done |
+| DYN-03 | Phase 6 | Done |
+| DYN-04 | Phase 6 | Done |
+| DYN-05 | Phase 6 | Done |
+| DYN-06 | Phase 6 | Done |
 | SEC-01 | Phase 7 | Pending |
 | SEC-02 | Phase 7 | Pending |
 | SEC-03 | Phase 7 | Pending |

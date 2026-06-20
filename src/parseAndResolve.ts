@@ -2,12 +2,19 @@ import { parseTask } from "./llm/parse.js";
 import { resolveTask } from "./resolve/index.js";
 import type { OpenAILike } from "./llm/openai.js";
 import type { ResolvedTask } from "./resolve/types.js";
+import type { ClientesConfig, MembersConfig } from "./resolve/index.js";
 
 export type ParseAndResolveDeps = {
   client: OpenAILike;
   model: string;
   timezone?: string;
   slackToMember?: Record<string, number>;
+  /**
+   * Injected live config from the provider (plan 02/03). When absent the
+   * resolver defaults to the static maps, so behavior is unchanged.
+   */
+  clientesConfig?: ClientesConfig;
+  membersConfig?: MembersConfig;
   /** Optional system-prompt override forwarded to parseTask (injectable seam). */
   systemPrompt?: string;
 };
@@ -33,6 +40,8 @@ export async function parseAndResolve(
   return resolveTask(parsed, now, {
     timezone: deps.timezone,
     slackToMember: deps.slackToMember,
+    ...(deps.clientesConfig ? { clientesConfig: deps.clientesConfig } : {}),
+    ...(deps.membersConfig ? { membersConfig: deps.membersConfig } : {}),
   });
 }
 

@@ -15,6 +15,11 @@ import {
 import { createClickUpClient } from "../clickup/client.js";
 import { createOpenAIClient } from "../llm/openai.js";
 import { SLACK_TO_MEMBER } from "../config/members.js";
+import { createConfigProvider } from "../config/provider.js";
+import {
+  resolveSlackMentionsToMembers,
+  type SlackUserInfoClient,
+} from "./slackEmail.js";
 import type { ParseAndResolveDeps } from "../parseAndResolve.js";
 import type { IncomingMessage } from "./filter.js";
 
@@ -64,6 +69,11 @@ function asInteractionClient(client: unknown): SlackInteractionClient {
   return client as SlackInteractionClient;
 }
 
+/** Narrow the Bolt Web client to the minimal users.info shape (DYN-04). */
+function asUserInfoClient(client: unknown): SlackUserInfoClient {
+  return client as SlackUserInfoClient;
+}
+
 /**
  * Build the Bolt App wired to the Vercel adapter. Signature verification and the
  * ACK<3s → background `waitUntil` pattern are handled by the receiver/adapter —
@@ -98,6 +108,8 @@ export function createSlackApp(env: Env): SlackApp {
     (clickup ??= createClickUpClient({
       token: env.CLICKUP_API_TOKEN,
       listId: env.CLICKUP_LIST_ID,
+      // teamId powers the dynamic-config members read (DYN-03).
+      teamId: env.CLICKUP_TEAM_ID,
       // HARD-02: the client routes every createTask/getTask call through
       // createRetryingFetch internally (429 Retry-After + 5xx backoff), using a
       // real setTimeout-based sleep by default — nothing to wrap here.
@@ -105,6 +117,12 @@ export function createSlackApp(env: Env): SlackApp {
         typeof createClickUpClient
       >[0]["fetch"],
     }));
+
+  // Single dynamic-config provider per warm instance (DYN-01..05). Lazy so
+  // construction stays network-free; the Redis TTL bounds live-fetch frequency.
+  let provider: ReturnType<typeof createConfigProvider> | undefined;
+  const getProvider = () =>
+    (provider ??= createConfigProvider({ clickup: getClickup(), redis: getRedis() }));
 
   let parseDeps: ParseAndResolveDeps | undefined;
   const getParseDeps = (): ParseAndResolveDeps =>
@@ -141,12 +159,27 @@ export function createSlackApp(env: Env): SlackApp {
     });
     const botUserId = await resolveBotUserId(client as unknown as AuthTestClient);
 
+    // DYN-04: resolve @-mentions to ClickUp members by email, using this event's
+    // Slack client (users.info) + the live members config. Degrades to the
+    // static SLACK_TO_MEMBER overlay inside the resolver when the scope/email is
+    // unavailable; an empty map keeps name/alias resolution working.
+    const resolveSlackToMember = async (
+      ids: string[],
+    ): Promise<Record<string, number>> =>
+      resolveSlackMentionsToMembers(ids, {
+        slack: asUserInfoClient(client),
+        membersConfig: await getProvider().getMembers(),
+        redis: getRedis(),
+      });
+
     await processMessageEvent(
       {
         redis: getRedis(),
         client,
         env,
         parseDeps: getParseDeps(),
+        provider: getProvider(),
+        resolveSlackToMember,
         genPendingId: () => crypto.randomUUID(),
         botUserId,
       },
