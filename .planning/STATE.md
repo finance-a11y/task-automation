@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Dynamic Config + Security Hardening
-status: planning
+status: roadmapped
 last_updated: "2026-06-20T00:26:10.978Z"
 last_activity: 2026-06-20
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-18)
 
 **Core value:** Convertir un mensaje libre en Slack en una tarea de ClickUp correcta y completa (cliente + asignado + fechas) sin llenar formularios a mano.
-**Current focus:** Phase 4 complete (Flow B reverse notifications, offline) — next up Phase 5 (Hardening)
+**Current focus:** v1.0 shipped (Phases 1-5). v1.1 roadmapped into 3 phases — next up Phase 6 (Dynamic Config from ClickUp).
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 6 — Dynamic Config from ClickUp (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-20 — Milestone v1.1 started
+Status: Roadmapped — ready to plan Phase 6
+Last activity: 2026-06-20 — v1.1 roadmap created (Phases 6-8)
 
 ## Performance Metrics
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This bot turns free-form Spanish Slack messages in one dedicated channel into correctly-structured ClickUp tasks (cliente, asignados, fechas, links) behind a mandatory human-confirmation gate, then notifies the same Slack thread when a task's status or assignee changes. The build follows the dependency chain the work imposes: first the serverless foundation (3s ACK, raw-body signatures, idempotency store) that everything rides on, then the highest-risk and Slack-independent NL parser + deterministic resolver, then the confirm-and-create slice that makes **Flow A** (Slack → ClickUp) a complete shippable product validating Core Value, then the independent reverse-sync **Flow B** (ClickUp → Slack notifications), and finally hardening for production resilience.
+This bot turns free-form Spanish Slack messages in one dedicated channel into correctly-structured ClickUp tasks (cliente, asignados, fechas, links) behind a mandatory human-confirmation gate, then notifies the same Slack thread when a task's status or assignee changes. The build follows the dependency chain the work imposes: first the serverless foundation (3s ACK, raw-body signatures, idempotency store) that everything rides on, then the highest-risk and Slack-independent NL parser + deterministic resolver, then the confirm-and-create slice that makes **Flow A** (Slack → ClickUp) a complete shippable product validating Core Value, then the independent reverse-sync **Flow B** (ClickUp → Slack notifications), and finally hardening for production resilience. **Milestone v1.1** then removes the hardcoded config — reading the Cliente dropdown, ClickUp members, and the Slack→ClickUp map live from ClickUp with Redis caching and resilient fallback (Phase 6) — and audits the whole app against the OWASP Top 10, producing SECURITY.md (Phase 7) before implementing the prioritized fixes (Phase 8).
 
 ## Phases
 
@@ -17,6 +17,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Confirm + Create (Flow A complete)** - Threaded preview with Confirm/Edit/Cancel that creates the task and posts its link back *(offline-verified; live Slack/ClickUp pending)*
 - [x] **Phase 4: Reverse Notifications (Flow B)** - ClickUp webhook posts status/assignee changes back to the originating thread *(offline-verified; live registration pending)*
 - [x] **Phase 5: Hardening** - Error reporting in-thread, rate-limit/redelivery handling, and a per-channel kill switch
+
+_Milestone v1.1 — Dynamic Config + Security Hardening:_
+- [ ] **Phase 6: Dynamic Config from ClickUp** - Live Cliente options, members, and email-resolved Slack→ClickUp map, Redis-cached with TTL and resilient fallback (no redeploy to add a client/member)
+- [ ] **Phase 7: Security Audit** - OWASP Top 10 (2021) + cybersecurity review of the whole app, severity-classified, written up as SECURITY.md with a prioritized remediation plan
+- [ ] **Phase 8: Security Hardening** - Implement the audit fixes: gate/remove /api/slack/diag, fix critical/high findings, scrub secrets from logs/responses, patch vulnerable deps
 
 ## Phase Details
 
@@ -95,10 +100,47 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 05-01-PLAN.md — ClickUp 429/5xx retry+backoff wrapper (injected clock) + reportErrorToThread helper + wire in-thread error reporting (HARD-01, HARD-02)
   - [x] 05-02-PLAN.md — Per-channel kill switch (redis helpers + capture-path guard + ops script + README) + Slack/webhook redelivery-coverage confirmation (HARD-03, HARD-02)
 
+### Phase 6: Dynamic Config from ClickUp
+**Goal**: Replace the hardcoded `src/config/clients.ts` and `members.ts` maps with live ClickUp data — read the Cliente dropdown options and workspace members on demand, cache them in Redis with a ~10-minute TTL, resolve the Slack→ClickUp assignee map by email instead of hardcoded Slack IDs, fall back to the last-good cache or the static maps when ClickUp/Redis is down, and expose a manual cache-refresh path so a newly added client or member can be picked up without a redeploy.
+**Mode:** mvp
+**Depends on**: Phase 5
+**Requirements**: DYN-01, DYN-02, DYN-03, DYN-04, DYN-05, DYN-06
+**Success Criteria** (what must be TRUE):
+  1. Adding or renaming a Cliente option in ClickUp shows up in a new task preview without a redeploy (after the cache TTL expires or a manual refresh), and the resolver maps it to the correct option UUID
+  2. A newly added ClickUp workspace member can be resolved as an assignee without any code change, using live member data
+  3. A Slack user is matched to their ClickUp member by email (Slack `users.info` email ↔ ClickUp member email) with no hardcoded Slack IDs
+  4. When ClickUp or Redis is unreachable, the bot serves the last-good cached config (or the static maps) and the parse/preview/create flow still completes instead of breaking
+  5. Hitting the manual refresh/invalidate path clears the cached clients/members so the next parse reads fresh ClickUp data immediately
+**Plans**: TBD
+
+### Phase 7: Security Audit
+**Goal**: A complete, written security review of the live bot: audit every OWASP Top 10 (2021) category against the app, run a focused cybersecurity analysis of signature verification (Slack signing + ClickUp X-Signature), secrets handling, input validation, SSRF/injection risk in the ClickUp fetch path, the `/api/slack/diag` exposure, and vulnerable dependencies, and capture all findings severity-classified in `SECURITY.md` with a prioritized remediation plan. No fixes here — this phase produces the report that Phase 8 executes against.
+**Mode:** mvp
+**Depends on**: Phase 6
+**Requirements**: SEC-01, SEC-02, SEC-03
+**Success Criteria** (what must be TRUE):
+  1. `SECURITY.md` exists and walks every OWASP Top 10 (2021) category, with each finding tagged critical/high/medium/low
+  2. The report explicitly assesses Slack + ClickUp signature verification, secrets handling/non-exposure, input validation, SSRF/injection in the ClickUp fetch, and the `/api/slack/diag` endpoint exposure
+  3. A dependency vulnerability scan is recorded, listing affected packages and their severities
+  4. `SECURITY.md` ends with a prioritized remediation plan that maps each open finding to a concrete fix and owner-phase (Phase 8)
+**Plans**: TBD
+
+### Phase 8: Security Hardening
+**Goal**: Execute the remediation plan from `SECURITY.md`: gate or remove `/api/slack/diag` so it is not exposed in production, fix every critical and high finding (input validation, headers, access control, error handling), guarantee no secret or token is ever logged or leaked in responses or error bodies, and review/update dependencies with known critical or high vulnerabilities — a surgical hardening pass, not a rewrite.
+**Mode:** mvp
+**Depends on**: Phase 7
+**Requirements**: SEC-04, SEC-05, SEC-06, SEC-07
+**Success Criteria** (what must be TRUE):
+  1. `/api/slack/diag` is no longer reachable unauthenticated in production — it is env-gated, strongly gated/rate-limited, or returns 404 in prod
+  2. Every critical and high finding from `SECURITY.md` is fixed and re-verified, and `SECURITY.md` reflects the closed status
+  3. No secret or token appears in application logs, HTTP responses, or error bodies (verified against the audit's secrets-exposure checks)
+  4. Known critical/high dependency vulnerabilities are patched (or explicitly documented as accepted), and the dependency scan re-runs clean
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -107,3 +149,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 3. Confirm + Create (Flow A) | 4/4 | Complete (offline; live Slack/ClickUp pending) | 2026-06-18 |
 | 4. Reverse Notifications (Flow B) | 3/3 | Complete (offline; live registration pending) | 2026-06-18 |
 | 5. Hardening | 2/2 | Complete (offline; live 429/5xx backoff timing pending) | 2026-06-18 |
+| 6. Dynamic Config from ClickUp | 0/? | Not started | - |
+| 7. Security Audit | 0/? | Not started | - |
+| 8. Security Hardening | 0/? | Not started | - |

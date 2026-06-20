@@ -50,12 +50,24 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (pendiente de roadmap) | — | Pending |
+| DYN-01 | Phase 6 | Pending |
+| DYN-02 | Phase 6 | Pending |
+| DYN-03 | Phase 6 | Pending |
+| DYN-04 | Phase 6 | Pending |
+| DYN-05 | Phase 6 | Pending |
+| DYN-06 | Phase 6 | Pending |
+| SEC-01 | Phase 7 | Pending |
+| SEC-02 | Phase 7 | Pending |
+| SEC-03 | Phase 7 | Pending |
+| SEC-04 | Phase 8 | Pending |
+| SEC-05 | Phase 8 | Pending |
+| SEC-06 | Phase 8 | Pending |
+| SEC-07 | Phase 8 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 16 total
-- Mapped to phases: 0 (roadmap pendiente)
-- Unmapped: 16 ⚠️
+- v1.1 requirements: 13 total (DYN-01..06, SEC-01..07)
+- Mapped to phases: 13 ✓ (Phase 6: DYN, Phase 7: SEC audit, Phase 8: SEC hardening)
+- Unmapped: 0
 
 ---
 *v1.1 requirements defined: 2026-06-19*
