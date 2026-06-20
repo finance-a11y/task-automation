@@ -105,6 +105,43 @@ curl -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
   "$UPSTASH_REDIS_REST_URL/DEL/killswitch:C0123ABC"
 ```
 
+## Dynamic config (v1.1)
+
+The Cliente options and team members are read live from ClickUp and cached in
+Redis instead of being hardcoded. Add a client or a teammate in ClickUp and it
+shows up in the bot with no redeploy.
+
+How it stays fresh:
+
+- The cache has a ~10 minute TTL. After a client or member is added or renamed in
+  ClickUp, the change appears automatically once the cache expires.
+- Need it sooner? Hit the manual refresh endpoint, which clears the hot cache so
+  the next message re-reads ClickUp:
+
+  ```
+  GET /api/admin/refresh-config?secret=<SLACK_SIGNING_SECRET>
+  ```
+
+  It is gated by the Slack signing secret (timing-safe), the same gate the diag
+  endpoint uses. The non-expiring "last good" copies are left in place as the
+  fallback, so a refresh never leaves the bot without config.
+
+If ClickUp or Redis is unavailable, the bot falls back to the last good cache and
+then to the static maps in the repo, so parsing never breaks.
+
+### Assignee resolution by email (one-time Slack setup)
+
+To map an @-mentioned teammate to the right ClickUp assignee by email, the bot
+needs to read Slack user emails. Add the `users:read.email` bot scope and
+reinstall the app:
+
+1. Slack API dashboard → your app → OAuth & Permissions → Scopes → Bot Token
+   Scopes → add `users:read.email`.
+2. Reinstall the app to the workspace so the new scope takes effect.
+
+Without that scope the bot still works: it falls back to name/alias resolution
+and the static Slack→member map, so nothing breaks if you skip this step.
+
 ## Develop
 
 ```bash
