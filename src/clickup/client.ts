@@ -149,6 +149,12 @@ export function createClickUpClient(deps: {
     },
 
     async getTask(taskId: string): Promise<GetTaskResult> {
+      // Defense-in-depth at the trust boundary (FIND-11): ClickUp task ids are
+      // alphanumeric, so reject anything else BEFORE it reaches the URL path —
+      // a malformed segment (slash, dot-dot, space) must never be interpolated.
+      if (!/^[A-Za-z0-9]+$/.test(taskId)) {
+        throw new Error("ClickUp getTask: invalid taskId format");
+      }
       const res = await fetch(`${BASE_URL}/task/${taskId}`, {
         method: "GET",
         headers: { Authorization: token },

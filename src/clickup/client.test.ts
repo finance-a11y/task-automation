@@ -182,6 +182,29 @@ describe("createClickUpClient.getTask", () => {
     const client = createClickUpClient({ token: TOKEN, listId: LIST_ID, fetch: fetch as unknown as FetchLike });
     await expect(client.getTask("t1")).rejects.toThrow(/name/);
   });
+
+  it("proceeds to fetch for a valid alphanumeric id (happy path unchanged)", async () => {
+    const fetch = okGet({ id: "abc123", name: "ok" });
+    const client = createClickUpClient({ token: TOKEN, listId: LIST_ID, fetch: fetch as unknown as FetchLike });
+    await client.getTask("abc123");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["../../team/9013/member", "", "has space", "id/slash"])(
+    "rejects a malformed taskId %j BEFORE any fetch (FIND-11)",
+    async (badId) => {
+      const fetch = vi.fn();
+      const client = createClickUpClient({ token: TOKEN, listId: LIST_ID, fetch: fetch as unknown as FetchLike });
+      await expect(client.getTask(badId)).rejects.toThrow(/invalid taskId format/);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not leak the Authorization token in the validation error", async () => {
+    const fetch = vi.fn();
+    const client = createClickUpClient({ token: TOKEN, listId: LIST_ID, fetch: fetch as unknown as FetchLike });
+    await expect(client.getTask("bad/id")).rejects.not.toThrow(/pk_secret_token/);
+  });
 });
 
 describe("createClickUpClient — HARD-02 retry wiring", () => {

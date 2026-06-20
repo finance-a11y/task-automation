@@ -266,6 +266,13 @@ async function runWebhook(
 
   // 4. Redelivery dedup on (event + task_id + first history-item id), with a
   //    content-hash fallback when no item id is present (WR-02).
+  //
+  //    FIND-04 (replay residual, ACCEPTED): the ClickUp webhook payload carries
+  //    no signed timestamp, so a timestamp-window rejection is impossible without
+  //    inventing a field — which we deliberately do NOT do. The 24h `whk:` dedup
+  //    TTL (markWebhookDeliveryOnce) is the accepted replay bound: a captured
+  //    delivery replayed inside that window is collapsed to a no-op, and the
+  //    X-Signature HMAC gate at ingress already rejects forged/tampered bodies.
   const deliveryKey = buildDeliveryKey(payload.event, taskId, items);
   const first = await markWebhookDeliveryOnce(redis, deliveryKey);
   if (!first) return;
