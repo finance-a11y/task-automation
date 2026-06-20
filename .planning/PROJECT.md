@@ -8,22 +8,40 @@ Un bot/automatización que escucha mensajes de lenguaje libre en un canal dedica
 
 Convertir un mensaje libre en Slack en una tarea de ClickUp correcta y completa (cliente + asignado + fechas), sin que nadie tenga que llenar formularios a mano. Si todo lo demás falla, esto debe funcionar.
 
+## Current Milestone: v1.1 Dynamic Config + Security Hardening
+
+**Goal:** Eliminar la config hardcodeada leyendo clientes/miembros/mapa-Slack en vivo desde ClickUp (cacheado en Redis con TTL), y endurecer la app contra OWASP Top 10.
+
+**Target features:**
+- Clientes dinámicos — opciones del dropdown "Cliente" leídas en vivo desde ClickUp, cacheadas. Agregar un cliente en ClickUp no requiere redeploy.
+- Asignados dinámicos — miembros del workspace ClickUp leídos en vivo, cacheados.
+- Mapa Slack→ClickUp automático — resolver Slack user → ClickUp member por email, sin hardcodear IDs de Slack.
+- Auditoría OWASP Top 10 + análisis de ciberseguridad de toda la app.
+- Hardening — corregir los hallazgos de la auditoría.
+
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Bot escucha mensajes en canal Slack dedicado y los captura — v1.0
+- ✓ IA (OpenAI structured outputs) parsea mensaje libre → estructura: título, descripción, cliente, asignados, start/due date, links — v1.0
+- ✓ Bot resuelve "cliente" al custom field dropdown de ClickUp — v1.0
+- ✓ Bot resuelve asignados via mapa Slack→ClickUp + nombres/menciones del texto — v1.0
+- ✓ Bot postea preview parseado en el hilo para confirmación humana (Confirmar/Editar/Cancelar) — v1.0
+- ✓ Al confirmar, bot crea la tarea en ClickUp con todos los campos + postea el link al hilo — v1.0
+- ✓ Bot notifica al canal cambios de estatus/asignado (ClickUp → Slack, webhook) — v1.0
+- ✓ Hardening base: errores en hilo, retry 429, kill switch — v1.0
+- ✓ Desplegado en vivo en Vercel (Fluid Compute + Upstash Redis) — v1.0
 
 ### Active
 
-- [ ] Bot escucha mensajes en canal Slack dedicado y los captura
-- [ ] IA (Claude) parsea mensaje libre → estructura: título, descripción, cliente, asignados, start/due date, links
-- [ ] Bot resuelve "cliente" al custom field dropdown de ClickUp (7 opciones existentes)
-- [ ] Bot resuelve asignados via mapa fijo Slack→ClickUp + resolución de nombres sueltos del texto
-- [ ] Bot postea preview parseado en el hilo del mensaje para confirmación humana
-- [ ] Al confirmar, bot crea la tarea en ClickUp en la list destino con todos los campos
-- [ ] Bot postea link de la tarea creada de vuelta al hilo
-- [ ] Bot notifica al canal cambios de estatus/asignado de tareas (ClickUp → Slack, via webhook)
+<!-- v1.1 — see Current Milestone above; tracked in REQUIREMENTS.md -->
+
+- [ ] Clientes dinámicos desde ClickUp (cacheados en Redis con TTL)
+- [ ] Asignados dinámicos desde ClickUp (cacheados)
+- [ ] Mapa Slack→ClickUp resuelto por email automáticamente
+- [ ] Auditoría OWASP Top 10 + análisis de ciberseguridad
+- [ ] Fixes de los hallazgos de seguridad
 
 ### Out of Scope
 
